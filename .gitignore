@@ -127,3 +127,18 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Random other stuff
+*.pyc
+*.pdf
+*.state
+*.tfevents*
+*.df
+*.s
+
+# additional excludes specific to the repo
+*.t
+*.dat
+*.h5
+*.pkl
+*.json
