@@ -29,4 +29,4 @@ These should produce the following results:
 |---------|------|------|------|
 |MLP |   0.034  | 4.78 | 0.17 |
 |EMLP|   0.235 | 2.39 | 2e-7 |
-|MixedEMLP|   .070 | **0.15** | 0.08 |
+|MixedEMLP|   0.070 | **0.15** | 0.08 |
