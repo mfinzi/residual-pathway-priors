@@ -30,17 +30,20 @@ def equivariance_err(model,mb,group=None):
 class RegressorPlus(Regressor):
     """ Trainer subclass. Implements loss (crossentropy), batchAccuracy
         and getAccuracy (full dataset) """
-    def __init__(self,model,*args,**kwargs):
+    def __init__(self,model,*args,wd=1e2,**kwargs):
         super().__init__(model,*args,**kwargs)
         fastloss = objax.Jit(self.loss,model.vars())
         self.gradvals = objax.Jit(objax.GradValues(fastloss,model.vars()),model.vars())
         self.model.predict = objax.Jit(objax.ForceArgs(model.__call__,training=False),model.vars())
         #self.model.predict = lambda x: self.model(x,training=False)
+        self.hypers['wd']=wd
+    
     def loss(self,minibatch):
         """ Standard cross-entropy loss """
         x,y = minibatch
-        mse = jnp.mean((self.model(x,training=True)-y)**2)#jnp.mean(jnp.abs(self.model(x,training=True)-y))
-        return mse
+        l2 = sum((v.value ** 2).sum() for k, v in self.model.model.vars().items() if k.endswith('_basic'))
+        mse = jnp.mean((self.model(x,training=True)-y)**2)
+        return mse+self.hypers['wd']*l2
 
     def metrics(self,loader):
         mse = lambda mb: np.asarray(jax.device_get(jnp.mean((self.model.predict(mb[0])-mb[1])**2)))

@@ -19,15 +19,6 @@ class Trainer(object,metaclass=Named):
                 log_dir=None, log_suffix='',log_args={},early_stop_metric=None):
         # Setup model, optimizer, and dataloaders
         self.model = model#
-        #self.model= objax.Jit(objax.ForceArgs(model,training=True)) #TODO: figure out static nums
-        #self.model.predict = objax.Jit(objax.ForceArgs(model.__call__,training=False),model.vars())
-        #self.model.predict = objax.ForceArgs(model.__call__,training=False)
-        #self._model = model
-        #self.model = objax.ForceArgs(model,training=True)
-        #self.model.predict = objax.ForceArgs(model.__call__,training=False)
-        #self.model = objax.Jit(lambda x, training: model(x,training=training),model.vars(),static_argnums=(1,))
-        #self.model = objax.Jit(model,static_argnums=(1,))
-        
         self.optimizer = optim(model.vars())
         self.lr_sched= lr_sched
         self.dataloaders = dataloaders # A dictionary of dataloaders
