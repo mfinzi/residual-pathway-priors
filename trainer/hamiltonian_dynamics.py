@@ -19,6 +19,7 @@ from jax import vmap
 import jax.numpy as jnp
 import numpy as np
 import objax
+
 from .classifier import Regressor,Classifier
 #from emlp_jax.model_trainer import RegressorPlus
 from functools import partial
@@ -158,7 +159,35 @@ class DoubleSpringPendulum(HamiltonianDataset):
         return CoupledPendulumAnimation
 
 
-
+class WindyDoubleSpringPendulum(HamiltonianDataset):
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.rep_in = 4*T(1)#Vector
+        self.rep_out = T(0)#Scalar
+        self.symmetry = O2eR3()
+        self.stats = (0,1,0,1)
+    def H(self,z):
+        g=1
+        wind = jnp.array([0.08, 0.05, 0.])
+        m1,m2,k1,k2,l1,l2 = 1,1,1,1,1,1
+        x,p = unpack(z)
+        p1,p2 = unpack(p)
+        x1,x2 = unpack(x)
+        ke = .5*(p1**2).sum(-1)/m1 + .5*(p2**2).sum(-1)/m2
+        ke += x1 @ wind + x2 @ wind
+        pe = .5*k1*(jnp.sqrt((x1**2).sum(-1))-l1)**2 
+        pe += k2*(jnp.sqrt(((x1-x2)**2).sum(-1))-l2)**2
+        pe += m1*g*x1[...,2]+m2*g*x2[...,2]
+        return (ke + pe).sum()
+    def sample_initial_conditions(self,bs):
+        x1 = np.array([0,0,-1.5]) +.2*np.random.randn(bs,3)
+        x2= np.array([0,0,-3.]) +.2*np.random.randn(bs,3)
+        p = .4*np.random.randn(bs,6)
+        z0 = np.concatenate([x1,x2,p],axis=-1)
+        return z0
+    @property
+    def animator(self):
+        return CoupledPendulumAnimation
 
 class IntegratedDynamicsTrainer(Regressor):
     def __init__(self,model,*args,**kwargs):

@@ -64,3 +64,13 @@ class MixedEMLP(Module,metaclass=Named):
         )
   def __call__(self,x,training=True):
       return self.network(x)
+    
+    
+class MixedEMLPH(MixedEMLP):
+    """ Equivariant EMLP modeling a Hamiltonian for HNN. Same args as EMLP"""
+    #__doc__ += EMLP.__doc__.split('.')[1]
+    def H(self,x):#,training=True):
+        y = self.network(x)
+        return y.sum()
+    def __call__(self,x):
+        return self.H(x)
