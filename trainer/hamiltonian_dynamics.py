@@ -20,7 +20,7 @@ import jax.numpy as jnp
 import numpy as np
 import objax
 
-from .classifier import Regressor,Classifier
+from classifier import Regressor,Classifier
 #from emlp_jax.model_trainer import RegressorPlus
 from functools import partial
 from itertools import islice
@@ -112,7 +112,7 @@ class HamiltonianDataset(Dataset,metaclass=Named):
         raise NotImplementedError
     def animate(self, zt=None):
         if zt is None:
-            zt = np.asarray(self.integrate(self.sample_initial_conditions(10),self.T_long))
+            zt = np.asarray(self.integrate(self.sample_initial_conditions(10)[0],self.T_long))
         # bs, T, 2nd
         if len(zt.shape) == 3:
             j = np.random.randint(zt.shape[0])
