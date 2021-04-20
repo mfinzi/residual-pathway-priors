@@ -7,6 +7,7 @@ git clone https://github.com/mfinzi/residual-pathway-priors.git
 cd residual-pathway-priors
 pip install -e .
 ```
+![video](https://user-images.githubusercontent.com/12687085/114929977-7bdaeb80-9e02-11eb-88e9-3e14262d5392.mp4)
 
 # Experimental results
 To train the standard MLP on the modified inertia task, you can run
