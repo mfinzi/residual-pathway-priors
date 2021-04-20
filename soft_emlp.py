@@ -62,8 +62,8 @@ class MixedEMLP(Module,metaclass=Named):
             *[MixedEMLPBlock(rin,rout) for rin,rout in zip(reps,reps[1:])],
             MixedLinear(reps[-1],self.rep_out)
         )
-  def __call__(self,x,training=True):
-      return self.network(x)
+  def __call__(self,S,training=True):
+      return self.network(S)
     
     
 class MixedEMLPH(MixedEMLP):
