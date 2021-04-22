@@ -31,9 +31,9 @@ class _hkLinear(hk.Module):
 
     def __call__(self, x):  # (cin) -> (cout)
         i,j = self.shape
-        w_init = hk.initializers.TruncatedNormal(1. / np.sqrt(j))
+        w_init = hk.initializers.TruncatedNormal(1. / np.sqrt(i))
         w = hk.get_parameter("w", shape=self.shape, dtype=x.dtype, init=w_init)
-        b = hk.get_parameter("b", shape=[i], dtype=x.dtype, init=jnp.ones)
+        b = hk.get_parameter("b", shape=[i], dtype=x.dtype, init=w_init)
         W = (self.Pw@w.reshape(-1)).reshape(*self.shape)
         b = self.Pb@b
         return x@W.T+b
@@ -54,10 +54,10 @@ class _hkBiLinear(hk.Module):
 
     def __call__(self, x):
         # compatible with non sumreps? need to check
-        w_init = hk.initializers.TruncatedNormal(1.)
+        w_init = hk.initializers.TruncatedNormal(1.)#/jnp.sqrt(self.Wdim))
         w = hk.get_parameter("w", shape=[self.Wdim], dtype=x.dtype, init=w_init)
         W = self.weight_proj(w,x)
-        return .1*(W@x[...,None])[...,0]
+        return .05*(W@x[...,None])[...,0]
 
 @export
 class GatedNonlinearity(object):  # TODO: add support for mixed tensors and non sumreps
@@ -84,7 +84,7 @@ def EMLPBlock(repin,repout):
     def block(x):
         lin = linear(x)
         preact =bilinear(lin)+lin
-#         preact = linear(x)
+        #preact = linear(x)
         return nonlinearity(preact)
     return block
 
@@ -118,9 +118,6 @@ def EMLP(rep_in,rep_out,group,ch=384,num_layers=3):
         *[EMLPBlock(rin,rout) for rin,rout in zip(reps,reps[1:])],
         Linear(reps[-1],rep_out)
     )
-    # def model(x):
-        
-    #     return network(x)
     return network
 
 @export
