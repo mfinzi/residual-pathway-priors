@@ -50,7 +50,7 @@ def main(args):
     def loss(minibatch):
         """ l2 regularized MSE """
         x,y = minibatch
-        mse = jnp.mean((model(x,training=True)-y)**2)
+        mse = jnp.mean((model(x)-y)**2)
 
         basic_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if k.endswith('_basic'))
         equiv_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if not k.endswith('_basic'))
