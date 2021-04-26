@@ -1,10 +1,11 @@
 import torch
 import torch.nn as nn
 from oil.utils.utils import export
-from trainer import Trainer
+from .trainer import Trainer
 import jax
 import jax.numpy as jnp
 import numpy as np
+import objax
 
 def cross_entropy(logprobs, targets):
     ll = jnp.take_along_axis(logprobs, jnp.expand_dims(targets, axis=1), axis=1)
@@ -15,7 +16,13 @@ def cross_entropy(logprobs, targets):
 class Classifier(Trainer):
     """ Trainer subclass. Implements loss (crossentropy), batchAccuracy
         and getAccuracy (full dataset) """
-    
+    def __init__(self,model,*args,**kwargs):
+        super().__init__(model,*args,**kwargs)
+        
+        fastloss = objax.Jit(self.loss,model.vars())
+        self.gradvals = objax.Jit(objax.GradValues(fastloss,model.vars()),model.vars())
+        self.model.predict = objax.Jit(objax.ForceArgs(model.__call__,training=False),model.vars())
+
     def loss(self,minibatch):
         """ Standard cross-entropy loss """ #TODO: support class weights
         x,y = minibatch
