@@ -57,12 +57,9 @@ def main(args):
     @objax.Function.with_vars(model.vars())
     def loss(minibatch):
         """ l2 regularized MSE """
-        x,y = minibatch
-        mse = jnp.mean((model(x)-y)**2)
-
         basic_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if k.endswith('_basic'))
         equiv_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if k.endswith('w_equiv'))
-        return mse + (args.basic_wd*basic_l2) + (args.equiv_wd*equiv_l2)
+        return mse(minibatch) + (args.basic_wd*basic_l2) + (args.equiv_wd*equiv_l2)
     
     grad_and_val = objax.GradValues(loss, model.vars())
 
