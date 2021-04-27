@@ -44,9 +44,14 @@ def main(args):
     net_config={'num_layers':3,'ch':384,'group':base_ds.symmetry}
     model = MixedEMLP(base_ds.rep_in, base_ds.rep_out, **net_config)
 
-    opt = objax.optimizer.Adam(model.vars())
+    opt = objax.optimizer.Adam(model.vars())#,beta2=.99)
 
-    lr = 3e-3
+
+    @objax.Jit
+    @objax.Function.with_vars(model.vars())
+    def mse(minibatch):
+        x,y = minibatch
+        return jnp.mean((model(x)-y)**2)
 
     @objax.Jit
     @objax.Function.with_vars(model.vars())
@@ -56,7 +61,7 @@ def main(args):
         mse = jnp.mean((model(x)-y)**2)
 
         basic_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if k.endswith('_basic'))
-        equiv_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if not k.endswith('_basic'))
+        equiv_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if k.endswith('w_equiv'))
         return mse + (args.basic_wd*basic_l2) + (args.equiv_wd*equiv_l2)
     
     grad_and_val = objax.GradValues(loss, model.vars())
@@ -71,15 +76,16 @@ def main(args):
     logger = []
     for epoch in tqdm(range(num_epochs)):
         tr_loss = np.mean([train_op(batch,lr) for batch in trainloader])
-        test_loss = None
+        train_mse=test_mse = None
         if not epoch%10:
-            test_loss = np.mean([loss(batch) for batch in testloader])
-            print(f"train loss: {tr_loss} test loss: {test_loss}")
+            train_mse = np.mean([mse(batch) for batch in trainloader])
+            test_mse = np.mean([mse(batch) for batch in testloader])
+            print(f"train mse: {train_mse} test mse: {test_mse}")
 
-        logger.append([epoch, tr_loss, test_loss])
+        logger.append([epoch, train_mse, test_mse])
 
     save_df = pd.DataFrame(logger)
-    print(f"Outcome:\n{save_df.iloc[-10:]}")
+    print(f"Outcome:\n{save_df.iloc[-10]}")
     fname = "inertia_log_basic" + str(args.basic_wd) + "_equiv" + str(args.equiv_wd) + ".pkl"
     os.makedirs("./saved-outputs/",exist_ok=True)
     save_df.to_pickle("./saved-outputs/" + fname)
@@ -98,8 +104,8 @@ if __name__=="__main__":
     parser.add_argument(
         "--equiv_wd",
         type=float,
-        default=0*1e-6,
-        help="basic weight decay",
+        default=.001,
+        help="equiv weight decay",
     )
     args = parser.parse_args()
 
