@@ -11,16 +11,16 @@ pip install -e .
 # Experimental results
 To train the standard MLP on the modified inertia task, you can run
 ```
-python train_regression.py --network MLP --num_epochs 1000
+python experiments/train_regression.py --network MLP --num_epochs 1000
 ```
 Likewise for the standard EMLP
 
 ```
-python train_regression.py --network EMLP --num_epochs 1000
+python experiments/train_regression.py --network EMLP --num_epochs 1000
 ```
 And the residual pathway prior EMLP
 ```
-python train_regression.py --network MixedEMLP --num_epochs 1000
+python experiments/train_regression.py --network MixedEMLP --num_epochs 1000
 ```
 
 These should produce the following results:

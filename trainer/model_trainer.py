@@ -59,18 +59,18 @@ class RegressorPlus(Regressor):
 class ClassifierPlus(Classifier):
     """ Trainer subclass. Implements loss (crossentropy), batchAccuracy
         and getAccuracy (full dataset) """
-    def __init__(self,model,*args,**kwargs):
-        super().__init__(model,*args,**kwargs)
+    # def __init__(self,model,*args,**kwargs):
+    #     super().__init__(model,*args,**kwargs)
         
-        fastloss = objax.Jit(self.loss,model.vars())
-        self.gradvals = objax.Jit(objax.GradValues(fastloss,model.vars()),model.vars())
-        self.model.predict = objax.Jit(objax.ForceArgs(model.__call__,training=False),model.vars())
+    #     fastloss = objax.Jit(self.loss,model.vars())
+    #     self.gradvals = objax.Jit(objax.GradValues(fastloss,model.vars()),model.vars())
+    #     self.model.predict = objax.Jit(objax.ForceArgs(model.__call__,training=False),model.vars())
         #self.model.predict = lambda x: self.model(x,training=False)
     
 
     def logStuff(self, step, minibatch=None):
         metrics = {}
-        metrics['test_equivar_err'] = self.evalAverageMetrics(islice(self.dataloaders['test'],0,None,5),
+        metrics['test_equivar_err'] = self.evalAverageMetrics(islice(self.dataloaders['val'],0,None,5),
                                 partial(equivariance_err,self.model)) # subsample by 5x so it doesn't take too long
         self.logger.add_scalars('metrics', metrics, step)
         super().logStuff(step,minibatch)
