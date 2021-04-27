@@ -4,7 +4,7 @@ import objax.nn.layers as objax_layers
 from objax.module import Module
 import objax
 import jax.numpy as jnp
-import emlp.nn as nn
+import emlp.nn.objax as nn
 from emlp.reps import Rep
 from oil.utils.utils import Named,export
 import logging
@@ -14,16 +14,16 @@ class MixedLinear(Module):
     def __init__(self, repin, repout):
         nin,nout = repin.size(),repout.size()
         self.b = TrainVar(objax.random.uniform((nout,))*.9/jnp.sqrt(nout))
-        self.w = TrainVar(orthogonal((nout, nin))*.9)
+        self.w_equiv = TrainVar(orthogonal((nout, nin))*.9)
         self.rep_W = repout<<repin
         
-        self.w_basic = TrainVar(self.w.value*.1)
+        self.w_basic = TrainVar(self.w_equiv.value*.1)
         self.b_basic = TrainVar(self.b.value*.1)
         self.Pb = repout.equivariant_projector() # the bias vector has representation repout
         self.Pw = self.rep_W.equivariant_projector()
 
     def __call__(self, x):
-        W = (self.Pw@self.w.value.reshape(-1)).reshape(*self.w.value.shape)
+        W = (self.Pw@self.w_equiv.value.reshape(-1)).reshape(*self.w_equiv.value.shape)
         b = self.Pb@self.b.value
         return x@(W.T + self.w_basic.value.T)+b+self.b_basic.value
     

@@ -1,4 +1,4 @@
-from emlp.nn import MLP,EMLP,MLPH,EMLPH, Standardize
+from emlp.nn import MLP,EMLP,MLPH,EMLPH
 from emlp.groups import SO2eR3,O2eR3,DkeR3,Trivial
 from emlp.reps import Scalar
 from trainer.hamiltonian_dynamics import IntegratedDynamicsTrainer,DoubleSpringPendulum,hnn_trial
@@ -17,11 +17,12 @@ import jax.numpy as jnp
 import objax
 import argparse
 from tqdm import tqdm
+import os
 
 def main(args):
 
-    num_epochs=300
-    ndata=2000+2000
+    num_epochs=1000
+    ndata=1000+2000
     seed=2021
     
     lr = 3e-3
@@ -30,19 +31,27 @@ def main(args):
     bs = 500
     
     dataset = ModifiedInertia
-    base_ds = dataset(ndata)
-    datasets = split_dataset(base_ds,splits=split)
+    
+    with FixedNumpySeed(seed),FixedPytorchSeed(seed):
+        base_ds = dataset(ndata)
+        datasets = split_dataset(base_ds,splits=split)
 
     dataloaders = {k:LoaderTo(DataLoader(v,batch_size=min(bs,len(v)),shuffle=(k=='train'),
                                          num_workers=0,pin_memory=False)) for k,v in datasets.items()}
     trainloader = dataloaders['train'] 
     testloader = dataloaders['val'] 
 
-    net_config={'num_layers':3,'ch':128,'group':base_ds.symmetry}
-    model = MixedEMLPH(base_ds.rep_in, base_ds.rep_out, **net_config)
-    opt = objax.optimizer.Adam(model.vars())
+    net_config={'num_layers':3,'ch':384,'group':base_ds.symmetry}
+    model = MixedEMLP(base_ds.rep_in, base_ds.rep_out, **net_config)
 
-    lr = 3e-3
+    opt = objax.optimizer.Adam(model.vars())#,beta2=.99)
+
+
+    @objax.Jit
+    @objax.Function.with_vars(model.vars())
+    def mse(minibatch):
+        x,y = minibatch
+        return jnp.mean((model(x)-y)**2)
 
     @objax.Jit
     @objax.Function.with_vars(model.vars())
@@ -52,16 +61,8 @@ def main(args):
         mse = jnp.mean((model(x)-y)**2)
 
         basic_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if k.endswith('_basic'))
-        equiv_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if not k.endswith('_basic'))
+        equiv_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if k.endswith('w_equiv'))
         return mse + (args.basic_wd*basic_l2) + (args.equiv_wd*equiv_l2)
-    
-    @objax.Jit
-    @objax.Function.with_vars(model.vars())
-    def MSE(minibatch):
-        """ l2 regularized MSE """
-        x,y = minibatch
-        return jnp.mean((model(x)-y)**2)
-    
     
     grad_and_val = objax.GradValues(loss, model.vars())
 
@@ -72,21 +73,21 @@ def main(args):
         opt(lr=lr, grads=g)
         return v
 
-
-
     logger = []
     for epoch in tqdm(range(num_epochs)):
         tr_loss = np.mean([train_op(batch,lr) for batch in trainloader])
-        tr_mse = np.mean([MSE(batch) for batch in trainloader])
-        test_loss = None
+        train_mse=test_mse = None
         if not epoch%10:
-            test_mse = np.mean([MSE(batch) for batch in testloader])
+            train_mse = np.mean([mse(batch) for batch in trainloader])
+            test_mse = np.mean([mse(batch) for batch in testloader])
+            print(f"train mse: {train_mse} test mse: {test_mse}")
 
-        logger.append([epoch, tr_mse, test_mse])
+        logger.append([epoch, train_mse, test_mse])
 
     save_df = pd.DataFrame(logger)
-    print(save_df.tail())
+    print(f"Outcome:\n{save_df.iloc[-10]}")
     fname = "inertia_log_basic" + str(args.basic_wd) + "_equiv" + str(args.equiv_wd) + ".pkl"
+    os.makedirs("./saved-outputs/",exist_ok=True)
     save_df.to_pickle("./saved-outputs/" + fname)
     
     fname = "inertia_mdl_basic" + str(args.basic_wd) + "_equiv" + str(args.equiv_wd) + ".npz"
@@ -97,14 +98,14 @@ if __name__=="__main__":
     parser.add_argument( 
         "--basic_wd",
         type=float,
-        default=1e-4,
+        default=1e2,
         help="basic weight decay",
     )
     parser.add_argument(
         "--equiv_wd",
         type=float,
-        default=1e-4,
-        help="basic weight decay",
+        default=.001,
+        help="equiv weight decay",
     )
     args = parser.parse_args()
 
