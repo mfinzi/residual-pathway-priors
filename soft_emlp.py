@@ -4,7 +4,7 @@ import objax.nn.layers as objax_layers
 from objax.module import Module
 import objax
 import jax.numpy as jnp
-import emlp.nn as nn
+import emlp.nn.objax as nn
 from emlp.reps import Rep
 from oil.utils.utils import Named,export
 import logging

@@ -17,11 +17,12 @@ import jax.numpy as jnp
 import objax
 import argparse
 from tqdm import tqdm
+import os
 
 def main(args):
 
-    num_epochs=300
-    ndata=2000+2000
+    num_epochs=1000
+    ndata=1000+2000
     seed=2021
     
     lr = 3e-3
@@ -30,16 +31,18 @@ def main(args):
     bs = 500
     
     dataset = ModifiedInertia
-    base_ds = dataset(ndata)
-    datasets = split_dataset(base_ds,splits=split)
+    
+    with FixedNumpySeed(seed),FixedPytorchSeed(seed):
+        base_ds = dataset(ndata)
+        datasets = split_dataset(base_ds,splits=split)
 
     dataloaders = {k:LoaderTo(DataLoader(v,batch_size=min(bs,len(v)),shuffle=(k=='train'),
                                          num_workers=0,pin_memory=False)) for k,v in datasets.items()}
     trainloader = dataloaders['train'] 
     testloader = dataloaders['val'] 
 
-    net_config={'num_layers':3,'ch':128,'group':base_ds.symmetry}
-    model = MixedEMLPH(base_ds.rep_in, Scalar, **net_config)
+    net_config={'num_layers':3,'ch':384,'group':base_ds.symmetry}
+    model = MixedEMLP(base_ds.rep_in, base_ds.rep_out, **net_config)
 
     opt = objax.optimizer.Adam(model.vars())
 
@@ -65,19 +68,20 @@ def main(args):
         opt(lr=lr, grads=g)
         return v
 
-
-
     logger = []
     for epoch in tqdm(range(num_epochs)):
         tr_loss = np.mean([train_op(batch,lr) for batch in trainloader])
         test_loss = None
         if not epoch%10:
             test_loss = np.mean([loss(batch) for batch in testloader])
+            print(f"train loss: {tr_loss} test loss: {test_loss}")
 
         logger.append([epoch, tr_loss, test_loss])
 
     save_df = pd.DataFrame(logger)
+    print(f"Outcome:\n{save_df.iloc[-10:]}")
     fname = "inertia_log_basic" + str(args.basic_wd) + "_equiv" + str(args.equiv_wd) + ".pkl"
+    os.makedirs("./saved-outputs/",exist_ok=True)
     save_df.to_pickle("./saved-outputs/" + fname)
     
     fname = "inertia_mdl_basic" + str(args.basic_wd) + "_equiv" + str(args.equiv_wd) + ".npz"
@@ -88,13 +92,13 @@ if __name__=="__main__":
     parser.add_argument( 
         "--basic_wd",
         type=float,
-        default=1e-4,
+        default=1e2,
         help="basic weight decay",
     )
     parser.add_argument(
         "--equiv_wd",
         type=float,
-        default=1e-4,
+        default=0*1e-6,
         help="basic weight decay",
     )
     args = parser.parse_args()
