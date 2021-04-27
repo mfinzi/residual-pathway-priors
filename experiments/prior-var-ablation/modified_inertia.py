@@ -1,4 +1,4 @@
-from emlp.nn import MLP,EMLP,MLPH,EMLPH
+from emlp.nn import MLP,EMLP,MLPH,EMLPH, Standardize
 from emlp.groups import SO2eR3,O2eR3,DkeR3,Trivial
 from emlp.reps import Scalar
 from trainer.hamiltonian_dynamics import IntegratedDynamicsTrainer,DoubleSpringPendulum,hnn_trial
@@ -39,8 +39,7 @@ def main(args):
     testloader = dataloaders['val'] 
 
     net_config={'num_layers':3,'ch':128,'group':base_ds.symmetry}
-    model = MixedEMLPH(base_ds.rep_in, Scalar, **net_config)
-
+    model = MixedEMLPH(base_ds.rep_in, base_ds.rep_out, **net_config)
     opt = objax.optimizer.Adam(model.vars())
 
     lr = 3e-3
@@ -56,6 +55,14 @@ def main(args):
         equiv_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if not k.endswith('_basic'))
         return mse + (args.basic_wd*basic_l2) + (args.equiv_wd*equiv_l2)
     
+    @objax.Jit
+    @objax.Function.with_vars(model.vars())
+    def MSE(minibatch):
+        """ l2 regularized MSE """
+        x,y = minibatch
+        return jnp.mean((model(x)-y)**2)
+    
+    
     grad_and_val = objax.GradValues(loss, model.vars())
 
     @objax.Jit
@@ -70,13 +77,15 @@ def main(args):
     logger = []
     for epoch in tqdm(range(num_epochs)):
         tr_loss = np.mean([train_op(batch,lr) for batch in trainloader])
+        tr_mse = np.mean([MSE(batch) for batch in trainloader])
         test_loss = None
         if not epoch%10:
-            test_loss = np.mean([loss(batch) for batch in testloader])
+            test_mse = np.mean([MSE(batch) for batch in testloader])
 
-        logger.append([epoch, tr_loss, test_loss])
+        logger.append([epoch, tr_mse, test_mse])
 
     save_df = pd.DataFrame(logger)
+    print(save_df.tail())
     fname = "inertia_log_basic" + str(args.basic_wd) + "_equiv" + str(args.equiv_wd) + ".pkl"
     save_df.to_pickle("./saved-outputs/" + fname)
     
