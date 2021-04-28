@@ -1,5 +1,5 @@
 from emlp.nn import MLP,EMLP,MLPH,EMLPH
-from emlp.groups import SO2eR3,O2eR3,DkeR3,Trivial
+from emlp.groups import SO2eR3,O2eR3,DkeR3,Trivial, SO
 from emlp.reps import Scalar
 from trainer.hamiltonian_dynamics import IntegratedDynamicsTrainer,DoubleSpringPendulum,hnn_trial
 from trainer.hamiltonian_dynamics import WindyDoubleSpringPendulum, BHamiltonianFlow
@@ -21,65 +21,64 @@ import os
 
 def main(args):
 
-    num_epochs=1000
+    num_epochs=500
     ndata=1000+2000
     seed=2021
     
     lr = 3e-3
 
-    split={'train':-1,'val':1000,'test':1000}
-    bs = 500
+    BS = 500
     
-    dataset = ModifiedInertia
+    trainset = ModifiedInertia(1000) # Initialize dataset with 1000 examples
+    testset = ModifiedInertia(2000)
     
-    with FixedNumpySeed(seed),FixedPytorchSeed(seed):
-        base_ds = dataset(ndata)
-        datasets = split_dataset(base_ds,splits=split)
+    trainloader = DataLoader(trainset,batch_size=BS,shuffle=True)
+    testloader = DataLoader(testset,batch_size=BS,shuffle=True)
 
-    dataloaders = {k:LoaderTo(DataLoader(v,batch_size=min(bs,len(v)),shuffle=(k=='train'),
-                                         num_workers=0,pin_memory=False)) for k,v in datasets.items()}
-    trainloader = dataloaders['train'] 
-    testloader = dataloaders['val'] 
-
-    net_config={'num_layers':3,'ch':384,'group':base_ds.symmetry}
-    model = MixedEMLP(base_ds.rep_in, base_ds.rep_out, **net_config)
+    G = SO(3)
+    model = MixedEMLP(trainset.rep_in, trainset.rep_out, group=G,num_layers=3,ch=384)
 
     opt = objax.optimizer.Adam(model.vars())#,beta2=.99)
 
 
     @objax.Jit
     @objax.Function.with_vars(model.vars())
-    def mse(minibatch):
-        x,y = minibatch
-        return jnp.mean((model(x)-y)**2)
+    def mse(x, y):
+        yhat = model(x)
+        return ((yhat-y)**2).mean()
 
     @objax.Jit
     @objax.Function.with_vars(model.vars())
-    def loss(minibatch):
+    def loss(x, y):
         """ l2 regularized MSE """
-        x,y = minibatch
-        mse = jnp.mean((model(x)-y)**2)
+        yhat = model(x)
+        mse = ((yhat-y)**2).mean()
 
-        basic_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if k.endswith('_basic'))
+        basic_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if k.endswith('w_basic'))
         equiv_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if k.endswith('w_equiv'))
+        
         return mse + (args.basic_wd*basic_l2) + (args.equiv_wd*equiv_l2)
     
     grad_and_val = objax.GradValues(loss, model.vars())
 
     @objax.Jit
     @objax.Function.with_vars(model.vars()+opt.vars())
-    def train_op(batch, lr):
-        g, v = grad_and_val(batch)
+    def train_op(x, y, lr):
+        g, v = grad_and_val(x, y)
         opt(lr=lr, grads=g)
         return v
 
     logger = []
+    train_losses = []
+    test_losses = []
     for epoch in tqdm(range(num_epochs)):
-        tr_loss = np.mean([train_op(batch,lr) for batch in trainloader])
+        train_losses.append(np.mean([train_op(jnp.array(x),jnp.array(y),lr) for (x,y) in trainloader]))
+#         tr_loss = np.mean([train_op(batch,lr) for batch in trainloader])
         train_mse=test_mse = None
         if not epoch%10:
-            train_mse = np.mean([mse(batch) for batch in trainloader])
-            test_mse = np.mean([mse(batch) for batch in testloader])
+            test_losses.append(np.mean([mse(jnp.array(x),jnp.array(y)) for (x,y) in testloader]))
+            train_mse = np.mean([mse(jnp.array(x), jnp.array(y)) for (x, y) in trainloader])
+            test_mse = np.mean([mse(jnp.array(x), jnp.array(y)) for (x, y) in testloader])
             print(f"train mse: {train_mse} test mse: {test_mse}")
 
         logger.append([epoch, train_mse, test_mse])
