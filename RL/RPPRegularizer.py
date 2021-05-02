@@ -22,14 +22,18 @@ class RPPRegularizer(Regularizer):
         
         def function(dist_params, equiv_wd, basic_wd):
 #             print(dist_params)
+            if test:
+                print(temperatjflkdasjfklas)
             equiv_l2 = 0.0
             basic_l2 = 0.0
             for k1, v1 in self.f.params.items():
-                for k2, v2 in v1.items():
-                    if k2.endswith("_basic"):
-                        basic_l2 += (v2 ** 2).sum()
-                    else:
-                        equiv_l2 += (v2 ** 2).sum()
+                if "bi" not in k1:
+                    for k2, v2 in v1.items():
+                        if k2.endswith("w_basic"):
+                            basic_l2 += (v2 ** 2).sum()
+                        elif k2.endswith("w"):
+                            equiv_l2 += (v2 ** 2).sum()
+                        
             return (equiv_wd * equiv_l2) + (basic_wd * basic_l2)
             
         
@@ -37,11 +41,12 @@ class RPPRegularizer(Regularizer):
             equiv_l2 = 0.0
             basic_l2 = 0.0
             for k1, v1 in self.f.params.items():
-                for k2, v2 in v1.items():
-                    if k2.endswith("_basic"):
-                        basic_l2 += (v2 ** 2).sum()
-                    else:
-                        equiv_l2 += (v2 ** 2).sum()
+                if "bi" not in k1:
+                    for k2, v2 in v1.items():
+                        if k2.endswith("w_basic"):
+                            basic_l2 += (v2 ** 2).sum()
+                        elif k2.endswith("w"):
+                            equiv_l2 += (v2 ** 2).sum()
                         
             return {'RPPRegularizer/equiv_l2':equiv_l2,
                     'RPPRegularizer/basic_l2':basic_l2,

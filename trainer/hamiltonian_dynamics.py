@@ -20,7 +20,7 @@ import jax.numpy as jnp
 import numpy as np
 import objax
 
-from classifier import Regressor,Classifier
+from .classifier import Regressor,Classifier
 #from emlp_jax.model_trainer import RegressorPlus
 from functools import partial
 from itertools import islice
@@ -160,15 +160,16 @@ class DoubleSpringPendulum(HamiltonianDataset):
 
 
 class WindyDoubleSpringPendulum(HamiltonianDataset):
-    def __init__(self,*args,**kwargs):
+    def __init__(self,wind_scale=0.01, *args,**kwargs):
         super().__init__(*args,**kwargs)
         self.rep_in = 4*T(1)#Vector
         self.rep_out = T(0)#Scalar
         self.symmetry = O2eR3()
         self.stats = (0,1,0,1)
+        self.wind_scale = wind_scale
     def H(self,z):
         g=1
-        wind = jnp.array([0.08, 0.05, 0.])
+        wind = self.wind_scale * jnp.array([8, 5, 0.])
         m1,m2,k1,k2,l1,l2 = 1,1,1,1,1,1
         x,p = unpack(z)
         p1,p2 = unpack(p)
