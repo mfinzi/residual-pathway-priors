@@ -142,3 +142,7 @@ dmypy.json
 *.h5
 *.pkl
 *.json
+*.lz4
+*.npz
+*.txt
+*.pdf
