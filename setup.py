@@ -11,6 +11,6 @@ setup(name="Residual Pathway Priors",
       install_requires=['h5py','objax','pytest','sklearn',
       'olive-oil-ml @ git+https://github.com/mfinzi/olive-oil-ml',
       'emlp @ git+https://github.com/mfinzi/equivariant-MLP','optax','tqdm>=4.38'],
-      packages=find_packages(),
+      packages=['rpp'],
       long_description=open('README.md').read(),
 )
