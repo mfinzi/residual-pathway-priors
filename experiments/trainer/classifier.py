@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from oil.utils.utils import export
-from .trainer import Trainer
+from trainer import Trainer
 import jax
 import jax.numpy as jnp
 import numpy as np

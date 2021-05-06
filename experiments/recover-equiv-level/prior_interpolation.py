@@ -35,7 +35,7 @@ def main(args):
     logger = []
 
     dataset = WindyDoubleSpringPendulum
-    base_ds = dataset(wind_scale=args.wind_scale, n_systems=ndata,chunk_len=5)
+    base_ds = dataset(wind_scale=1e-2, n_systems=ndata,chunk_len=5)
     datasets = split_dataset(base_ds,splits=split)
 
     dataloaders = {k:LoaderTo(DataLoader(v,batch_size=min(bs,len(v)),shuffle=(k=='train'),
@@ -49,6 +49,9 @@ def main(args):
     opt = objax.optimizer.Adam(model.vars())
 
     lr = 3e-3
+    
+    basic_wd = args.base_l2 * 1./(np.maximum(args.alpha, 1e-6))
+    equiv_wd = args.base_l2 * 1./(np.maximum((1 - args.alpha), 1e-6))
 
     @objax.Jit
     @objax.Function.with_vars(model.vars())
@@ -68,7 +71,7 @@ def main(args):
 
         basic_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if k.endswith('w_basic'))
         equiv_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if k.endswith('w'))
-        return mse + (args.basic_wd*basic_l2) + (args.equiv_wd*equiv_l2)
+        return mse + (basic_wd * basic_l2) + (equiv_wd * equiv_l2)
 
     grad_and_val = objax.GradValues(loss, model.vars())
 
@@ -89,34 +92,33 @@ def main(args):
             tr_loss = np.mean([mse(batch) for batch in trainloader])
 
         logger.append([epoch, tr_loss, test_loss])
+        
+    test_loss = np.mean([mse(batch) for batch in testloader])
+    tr_loss = np.mean([mse(batch) for batch in trainloader])
+    logger.append([epoch, tr_loss, test_loss])
 
     save_df = pd.DataFrame(logger)
-    fname = "log_wind_scale" + str(args.wind_scale) + "_trial" + str(args.trial) + ".pkl"
+    fname = "log_alpha" + str(args.alpha) + "_trial" + str(args.trial) + ".pkl"
     save_df.to_pickle("./saved-outputs/" + fname)
     
-    fname = "mdl_wind_scale" + str(args.wind_scale) + "_trial" + str(args.trial) + ".npz"
+    fname = "mdl_alpha" + str(args.alpha) + "_trial" + str(args.trial) + ".npz"
     objax.io.save_var_collection("./saved-outputs/" + fname, model.vars())
     
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description="windy pendulum ablation")
-    parser.add_argument( 
-        "--basic_wd",
+    parser.add_argument(
+        "--base_l2",
         type=float,
-        default=1e-4,
-        help="basic weight decay",
+        default=1e-5,
+        
     )
     parser.add_argument(
-        "--equiv_wd",
+        '--alpha',
         type=float,
-        default=1e-6,
-        help="basic weight decay",
+        default=0.0,
+        help='ratio of equiv to basic l2'
     )
-    parser.add_argument(
-        "--wind_scale",
-        type=float,
-        default=1e-2,
-        help="basic weight decay",
-    )
+    
     parser.add_argument(
         "--trial",
         type=int,

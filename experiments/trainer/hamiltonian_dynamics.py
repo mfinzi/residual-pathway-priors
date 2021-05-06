@@ -20,7 +20,7 @@ import jax.numpy as jnp
 import numpy as np
 import objax
 
-from .classifier import Regressor,Classifier
+from classifier import Regressor,Classifier
 #from emlp_jax.model_trainer import RegressorPlus
 from functools import partial
 from itertools import islice
