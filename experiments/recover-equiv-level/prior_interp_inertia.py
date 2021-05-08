@@ -31,92 +31,90 @@ def main(args):
     lr = 3e-3
 
     split={'train':500,'val':.1,'test':.1}
-    bs = 500
+    BS = 500
     logger = []
 
-    dataset = WindyDoubleSpringPendulum
-    base_ds = dataset(wind_scale=args.wind_scale, n_systems=ndata,chunk_len=5)
-    datasets = split_dataset(base_ds,splits=split)
+    trainset = ModifiedInertia(1000) # Initialize dataset with 1000 examples
+    testset = ModifiedInertia(2000)
 
-    dataloaders = {k:LoaderTo(DataLoader(v,batch_size=min(bs,len(v)),shuffle=(k=='train'),
-                                         num_workers=0,pin_memory=False)) for k,v in datasets.items()}
-    trainloader = dataloaders['train'] 
-    testloader = dataloaders['val'] 
-
-    net_config={'num_layers':3,'ch':128,'group':base_ds.symmetry}
-    model = MixedEMLPH(base_ds.rep_in, Scalar, **net_config)
+    trainloader = DataLoader(trainset,batch_size=BS,shuffle=True)
+    testloader = DataLoader(testset,batch_size=BS,shuffle=True)
+    
+    net_config={'num_layers':3,'ch':128,'group':trainset.symmetry}
+    model = MixedEMLPH(trainset.rep_in, trainset.rep_out, **net_config)
 
     opt = objax.optimizer.Adam(model.vars())
 
     lr = 3e-3
+    
+    basic_wd = args.base_l2 * 1./(np.maximum(args.alpha, 1e-6))
+    equiv_wd = args.base_l2 * 1./(np.maximum((1 - args.alpha), 1e-6))
 
     @objax.Jit
     @objax.Function.with_vars(model.vars())
-    def mse(minibatch):
-        (z0, ts), true_zs = minibatch
-        pred_zs = BHamiltonianFlow(model,z0,ts[0])
-        return jnp.mean((pred_zs - true_zs)**2)
+    def mse(x, y):
+        yhat = model(x)
+        return ((yhat-y)**2).mean()
 
     @objax.Jit
     @objax.Function.with_vars(model.vars())
-    def loss(minibatch):
-        """ Standard cross-entropy loss """
-        (z0, ts), true_zs = minibatch
-        pred_zs = BHamiltonianFlow(model,z0,ts[0])
-        mse = jnp.mean((pred_zs - true_zs)**2)
-
+    def loss(x, y):
+        """ l2 regularized MSE """
+        yhat = model(x)
+        mse = ((yhat-y)**2).mean()
 
         basic_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if k.endswith('w_basic'))
-        equiv_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if k.endswith('w'))
-        return mse + (args.basic_wd*basic_l2) + (args.equiv_wd*equiv_l2)
+        equiv_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if k.endswith('w_equiv'))
+
+        return mse + (basic_wd*basic_l2) + (equiv_wd*equiv_l2)
+
 
     grad_and_val = objax.GradValues(loss, model.vars())
 
     @objax.Jit
     @objax.Function.with_vars(model.vars()+opt.vars())
-    def train_op(batch, lr):
-        g, v = grad_and_val(batch)
+    def train_op(x, y, lr):
+        g, v = grad_and_val(x, y)
         opt(lr=lr, grads=g)
         return v
 
 
 
     for epoch in tqdm(range(num_epochs)):
-        tr_loss_wd = np.mean([train_op(batch,lr) for batch in trainloader])
+        tr_loss_wd = np.mean([train_op(jnp.array(x), jnp.array(y),lr) for (x,y) in trainloader])
         test_loss = tr_loss = None
         if not epoch%10:
-            test_loss = np.mean([mse(batch) for batch in testloader])
-            tr_loss = np.mean([mse(batch) for batch in trainloader])
+            test_loss = np.mean([mse(jnp.array(x), jnp.array(y)) for (x,y) in testloader])
+            tr_loss = np.mean([mse(jnp.array(x), jnp.array(y)) for (x,y) in trainloader])
 
         logger.append([epoch, tr_loss, test_loss])
+        
+    test_loss = np.mean([mse(batch) for batch in testloader])
+    tr_loss = np.mean([mse(batch) for batch in trainloader])
+    logger.append([epoch, tr_loss, test_loss])
 
     save_df = pd.DataFrame(logger)
-    fname = "log_wind_scale" + str(args.wind_scale) + "_trial" + str(args.trial) + ".pkl"
+    fname = "log_inertia_alpha" + str(args.alpha) + "_trial" + str(args.trial) + ".pkl"
     save_df.to_pickle("./saved-outputs/" + fname)
     
-    fname = "mdl_wind_scale" + str(args.wind_scale) + "_trial" + str(args.trial) + ".npz"
+    fname = "mdl_inertia_alpha" + str(args.alpha) + "_trial" + str(args.trial) + ".npz"
     objax.io.save_var_collection("./saved-outputs/" + fname, model.vars())
     
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description="windy pendulum ablation")
-    parser.add_argument( 
-        "--basic_wd",
+    parser.add_argument(
+        "--base_l2",
         type=float,
-        default=1e-4,
-        help="basic weight decay",
+        default=1e-5,
+        
     )
     parser.add_argument(
-        "--equiv_wd",
+        '--alpha',
         type=float,
-        default=1e-6,
-        help="basic weight decay",
+        default=0.0,
+        help='ratio of equiv to basic l2'
     )
-    parser.add_argument(
-        "--wind_scale",
-        type=float,
-        default=1e-2,
-        help="basic weight decay",
-    )
+    
     parser.add_argument(
         "--trial",
         type=int,

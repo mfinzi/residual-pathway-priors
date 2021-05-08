@@ -1,14 +1,17 @@
 from emlp.nn import MLP,EMLP,MLPH,EMLPH
 from emlp.groups import SO2eR3,O2eR3,DkeR3,Trivial
 from emlp.reps import Scalar
-from trainer.hamiltonian_dynamics import IntegratedDynamicsTrainer,DoubleSpringPendulum,hnn_trial
-from trainer.hamiltonian_dynamics import WindyDoubleSpringPendulum, BHamiltonianFlow
+import sys
+sys.path.append("../trainer/")
+from hamiltonian_dynamics import IntegratedDynamicsTrainer,DoubleSpringPendulum,hnn_trial
+from hamiltonian_dynamics import WindyDoubleSpringPendulum, BHamiltonianFlow
 from torch.utils.data import DataLoader
 from oil.utils.utils import cosLr,FixedNumpySeed,FixedPytorchSeed
-from trainer.utils import LoaderTo
+from utils import LoaderTo
 from oil.datasetup.datasets import split_dataset
 from oil.tuning.args import argupdated_config
-from soft_emlp import MixedEMLP, MixedEMLPH
+from rpp.objax import MixedEMLP, MixedEMLPH
+sys.path.append("../")
 from datasets import ModifiedInertia
 import torch.nn as nn
 import numpy as np
