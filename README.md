@@ -31,6 +31,8 @@ These should produce the following results:
 |EMLP|   0.235 | 2.39 | 2e-7 |
 |MixedEMLP|   0.070 | **0.15** | 0.08 |
 
+New numbers from recent run with improved branch RPP-EMLP and wd_basic=1e1:
+|MixedEMLP|   0.081 | **0.21** | 0.09 |
 
 To train the models on the windy pendulum ...
 
