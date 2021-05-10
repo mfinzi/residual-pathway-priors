@@ -83,7 +83,7 @@ class RPPGatedNonlinearity(nn.Module):
     @nn.compact
     def __call__(self,values):
         ch = self.rep.size()
-        basic_init = lambda *args,**kwargs: nn.initializers.normal(1.0)(*args,**kwargs)*RPP_SCALE
+        basic_init = lambda *args,**kwargs: nn.initializers.ones(*args,**kwargs)*RPP_SCALE
         w = self.param('w_basic',basic_init,(ch,))
         gate_scalars = values[..., gate_indices(self.rep)]
         gated_activations = jax.nn.sigmoid(gate_scalars) * values[..., :self.rep.size()]

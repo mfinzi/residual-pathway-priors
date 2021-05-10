@@ -13,7 +13,7 @@ import emlp.groups
 import objax
 import datasets as ds
 from datasets import ModifiedInertia
-import soft_emlp
+import rpp.objax
 
 log_levels = {'critical': logging.CRITICAL,'error': logging.ERROR,
                         'warn': logging.WARNING,'warning': logging.WARNING,
@@ -42,6 +42,6 @@ def makeTrainer(*,dataset=ModifiedInertia,network=EMLP,num_epochs=300,ndata=1000
 
 if __name__ == "__main__":
     cfg = argupdated_config(makeTrainer.__kwdefaults__,
-                    namespace=(emlp.groups,ds,emlp.nn,soft_emlp))
+                    namespace=(emlp.groups,ds,emlp.nn,rpp.objax))
     trainer = makeTrainer(**cfg)
     trainer.train(cfg['num_epochs'])
