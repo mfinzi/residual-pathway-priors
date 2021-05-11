@@ -155,10 +155,11 @@ class _MixedLinear(nn.Module):
         w_equiv = self.param('w_equiv',nn.initializers.lecun_normal(),(x.shape[-1],self.cout))
         w_basic = self.param('w_basic',basic_init,(x.shape[-1],self.cout))
         b_equiv = self.param('b_equiv',nn.initializers.zeros,(self.cout,))
-        b_basic = self.param('b_basic',nn.initializers.zeros,(self.cout,))
+#         b_basic = self.param('b_basic',nn.initializers.zeros,(self.cout,))
+        b_basic = self.param('b_basic',basic_init,(self.cout,1))
         W = (self.Pw@w_equiv.reshape(-1)).reshape(*w_equiv.shape)
         B = self.Pb@b_equiv
-        return x@(W + w_basic) + B + b_basic
+        return x@(W + w_basic) + B + b_basic[:, 0]
 
 def MixedEMLPBlock(rep_in,rep_out):
     """ Basic building block of EMLP consisting of G-Linear, biLinear,
