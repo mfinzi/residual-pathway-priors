@@ -30,7 +30,7 @@ def equivariance_err(model,mb,group=None):
 class RegressorPlus(Regressor):
     """ Trainer subclass. Implements loss (crossentropy), batchAccuracy
         and getAccuracy (full dataset) """
-    def __init__(self,model,*args,wd=1e2,**kwargs):
+    def __init__(self,model,*args,wd=1e0,**kwargs):
         super().__init__(model,*args,**kwargs)
         fastloss = objax.Jit(self.loss,model.vars())
         self.gradvals = objax.Jit(objax.GradValues(fastloss,model.vars()),model.vars())

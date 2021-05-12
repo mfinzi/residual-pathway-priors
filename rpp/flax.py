@@ -19,6 +19,8 @@ from typing import Union,Iterable,Optional
 
 
 
+RPP_SCALE=1e-3
+
 
 @export
 def Linear(repin,repout):
@@ -37,11 +39,11 @@ class _Linear(nn.Module):
     cout:int
     @nn.compact
     def __call__(self,x):
-        w = self.param('w',nn.initializers.lecun_normal(),(x.shape[-1],self.cout))
+        w = self.param('w',nn.initializers.lecun_normal(),(self.cout,x.shape[-1]))
         b = self.param('b',nn.initializers.zeros,(self.cout,))
         W = (self.Pw@w.reshape(-1)).reshape(*w.shape)
         B = self.Pb@b
-        return x@W+B
+        return x@W.T+B
 
 @export
 def BiLinear(repin,repout):
@@ -58,9 +60,9 @@ class _BiLinear(nn.Module):
 
     @nn.compact
     def __call__(self, x):
-        w = self.param('w',nn.initializers.normal(),(self.Wdim,)) #TODO: change to standard normal
+        w = self.param('w',nn.initializers.normal(1.0),(self.Wdim,)) #TODO: change to standard normal
         W = self.weight_proj(w,x)
-        out= .1*(W@x[...,None])[...,0]
+        out= .03*(W@x[...,None])[...,0]
         return out
 
 
@@ -74,6 +76,18 @@ class GatedNonlinearity(nn.Module): #TODO: add support for mixed tensors and non
         gate_scalars = values[..., gate_indices(self.rep)]
         activations = jax.nn.sigmoid(gate_scalars) * values[..., :self.rep.size()]
         return activations
+
+@export
+class RPPGatedNonlinearity(nn.Module):
+    rep:Rep
+    @nn.compact
+    def __call__(self,values):
+        ch = self.rep.size()
+        basic_init = lambda *args,**kwargs: nn.initializers.ones(*args,**kwargs)*RPP_SCALE
+        w = self.param('w_basic',basic_init,(ch,))
+        gate_scalars = values[..., gate_indices(self.rep)]
+        gated_activations = jax.nn.sigmoid(gate_scalars) * values[..., :self.rep.size()]
+        return gated_activations+w*swish(values[..., :self.rep.size()])
 
 @export
 def EMLPBlock(rep_in,rep_out):
@@ -137,20 +151,22 @@ class _MixedLinear(nn.Module):
     cout:int
     @nn.compact
     def __call__(self,x):
+        basic_init = lambda *args,**kwargs: nn.initializers.lecun_normal()(*args,**kwargs)*RPP_SCALE
         w_equiv = self.param('w_equiv',nn.initializers.lecun_normal(),(x.shape[-1],self.cout))
-        w_basic = self.param('w_basic',nn.initializers.lecun_normal(),(x.shape[-1],self.cout))
+        w_basic = self.param('w_basic',basic_init,(x.shape[-1],self.cout))
         b_equiv = self.param('b_equiv',nn.initializers.zeros,(self.cout,))
-        b_basic = self.param('b_basic',nn.initializers.zeros,(self.cout,))
+#         b_basic = self.param('b_basic',nn.initializers.zeros,(self.cout,))
+        b_basic = self.param('b_basic',basic_init,(self.cout,1))
         W = (self.Pw@w_equiv.reshape(-1)).reshape(*w_equiv.shape)
         B = self.Pb@b_equiv
-        return x@(W + w_basic) + B + b_basic
+        return x@(W + w_basic) + B + b_basic[:, 0]
 
 def MixedEMLPBlock(rep_in,rep_out):
     """ Basic building block of EMLP consisting of G-Linear, biLinear,
         and gated nonlinearity. """
     mixedlinear = MixedLinear(rep_in,gated(rep_out))
     bilinear = BiLinear(gated(rep_out),gated(rep_out))
-    nonlinearity = GatedNonlinearity(rep_out)
+    nonlinearity = RPPGatedNonlinearity(rep_out)
     return _MixedEMLPBlock(mixedlinear,bilinear,nonlinearity)
 
 class _MixedEMLPBlock(nn.Module):
@@ -218,7 +234,8 @@ class MLP(nn.Module,metaclass=Named):
     def setup(self):
         logging.info("Initing MLP (flax)")
         cout = self.rep_out(self.group).size()
-        self.modules = [MLPBlock(self.ch) for _ in range(self.num_layers)]+[nn.Dense(cout)]
+        hidden_units = self.num_layers*[self.ch] if isinstance(self.ch,int) else self.ch
+        self.modules = [MLPBlock(ch) for ch in hidden_units]+[nn.Dense(cout)]
     def __call__(self,x):
         for module in self.modules:
             x = module(x)

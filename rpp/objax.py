@@ -8,17 +8,20 @@ import emlp.nn.objax as nn
 from emlp.reps import Rep
 from oil.utils.utils import Named,export
 import logging
+import jax
+
+RPP_SCALE=1e-3
 
 class MixedLinear(Module):
     """ Basic equivariant Linear layer from repin to repout."""
     def __init__(self, repin, repout):
         nin,nout = repin.size(),repout.size()
-        self.b = TrainVar(objax.random.uniform((nout,))*.9/jnp.sqrt(nout))
-        self.w_equiv = TrainVar(orthogonal((nout, nin))*.9)
+        self.b = TrainVar(objax.random.uniform((nout,))/jnp.sqrt(nout))
+        self.w_equiv = TrainVar(orthogonal((nout, nin)))
         self.rep_W = repout<<repin
         
-        self.w_basic = TrainVar(self.w_equiv.value*.1)
-        self.b_basic = TrainVar(self.b.value*.1)
+        self.w_basic = TrainVar(self.w_equiv.value*RPP_SCALE)
+        self.b_basic = TrainVar(self.b.value*RPP_SCALE)
         self.Pb = repout.equivariant_projector() # the bias vector has representation repout
         self.Pw = self.rep_W.equivariant_projector()
 
@@ -27,6 +30,20 @@ class MixedLinear(Module):
         b = self.Pb@self.b.value
         return x@(W.T + self.w_basic.value.T)+b+self.b_basic.value
     
+def swish(x):
+    return jax.nn.sigmoid(x)*x
+
+class RPPGatedNonlinearity(Module):
+    def __init__(self,rep):
+        super().__init__()
+        self.rep=rep
+        self.w_basic = TrainVar(jnp.ones(self.rep.size())*RPP_SCALE)
+        
+    def __call__(self,values):
+        gate_scalars = values[..., nn.gate_indices(self.rep)]
+        gated_activations = jax.nn.sigmoid(gate_scalars) * values[..., :self.rep.size()]
+        return gated_activations+self.w_basic.value*swish(values[..., :self.rep.size()])
+
 class MixedEMLPBlock(Module):
     """ Basic building block of EMLP consisting of G-Linear, biLinear,
         and gated nonlinearity. """
@@ -34,7 +51,7 @@ class MixedEMLPBlock(Module):
         super().__init__()
         self.mixedlinear = MixedLinear(rep_in,nn.gated(rep_out))
         self.bilinear = nn.BiLinear(nn.gated(rep_out),nn.gated(rep_out))
-        self.nonlinearity = nn.GatedNonlinearity(rep_out)
+        self.nonlinearity = RPPGatedNonlinearity(rep_out)
 
     def __call__(self,x):
         lin = self.mixedlinear(x)
