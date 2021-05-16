@@ -65,11 +65,11 @@ class MujocoRegression(Dataset,metaclass=Named):
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description='Convert Mujoco ReplayBuffer into Offline dynamics dataset')
-    parser.add_argument('path', type=str, default=os.path.expanduser("~/rpp-rl"),help='folder containing csvs')
-    parser.add_argument('chunk_len',type=int,default=5,help="size of training trajectory chunks")
+    parser.add_argument('--path', type=str, default=os.path.expanduser("~/rpp-rl"),help='folder containing csvs')
+    parser.add_argument('--chunk_len',type=int,default=5,help="size of training trajectory chunks")
     args = parser.parse_args()
     pths =glob.glob(args.path+"/*.csv")
-    print(pths)
+    print(f"Found replay buffers: {pths}")
     for pth in pths:
         envname = pth.split('_')[-1].split('.')[0]
         df = pd.read_csv(pth)
@@ -82,11 +82,11 @@ if __name__=="__main__":
 
         x_chunks = []
         u_chunks = []
-        for state,control in zip(episode_states,episode_controls):
+        for states,controls in zip(episode_states,episode_controls):
             i_start = np.random.randint(args.chunk_len)
-            chunk_x = episode_states[0].values[i_start:i_start+args.chunk_len*((len(chunk_df)-i_start)//args.chunk_len)]
+            chunk_x = states.values[i_start:i_start+args.chunk_len*((len(states)-i_start)//args.chunk_len)]
             x_chunks.append(chunk_x.reshape(-1,args.chunk_len,chunk_x.shape[-1]))
-            chunk_u = episode_controls[0].values[i_start:i_start+args.chunk_len*((len(chunk_df)-i_start)//args.chunk_len)]
+            chunk_u = controls.values[i_start:i_start+args.chunk_len*((len(controls)-i_start)//args.chunk_len)]
             u_chunks.append(chunk_u.reshape(-1,args.chunk_len,chunk_u.shape[-1]))
         x_chunks = np.concatenate(x_chunks,axis=0)
         u_chunks = np.concatenate(u_chunks,axis=0)
