@@ -10,6 +10,11 @@ from functools import partial
 import itertools
 from jax import vmap,jit
 from objax import Module
+import os,glob,argparse
+import argparse
+import numpy as np
+import pandas as pd
+
 
 @export
 class ModifiedInertia(Dataset,metaclass=Named):
@@ -39,3 +44,52 @@ class ModifiedInertia(Dataset,metaclass=Named):
         return (self.X[i],self.Y[i])
     def __len__(self):
         return self.X.shape[0]
+
+@export
+class MujocoRegression(Dataset,metaclass=Named):
+    def __init__(self,N=10000,env='Humanoid-v2',chunk_len=5):
+        super().__init__()
+        self.X = np.load(f"{env}_cl{chunk_len}_xdata.npy") #(N,chunk_len,d_obs)
+        self.U = np.load(f"{env}_cl{chunk_len}_udata.npy") #(N,chunk_len,d_action)
+        # Subsample to size:
+        ids = np.random.choice(self.X.shape[0],N//chunk_len,replace=False)
+        self.X = self.X[ids]
+        self.U = self.U[ids]
+    
+    def __getitem__(self,i):
+        return (self.X[i,0],self.U[i,:]), self.X[i]
+    def __len__(self):
+        return self.X.shape[0]
+    
+
+
+if __name__=="__main__":
+    parser = argparse.ArgumentParser(description='Convert Mujoco ReplayBuffer into Offline dynamics dataset')
+    parser.add_argument('path', type=str, default=os.path.expanduser("~/rpp-rl"),help='folder containing csvs')
+    parser.add_argument('chunk_len',type=int,default=5,help="size of training trajectory chunks")
+    args = parser.parse_args()
+    pths =glob.glob(args.path+"/*.csv")
+    print(pths)
+    for pth in pths:
+        envname = pth.split('_')[-1].split('.')[0]
+        df = pd.read_csv(pth)
+
+        all_states = df[[colname for colname in df.columns if colname[0]=='x']]
+        all_controls = df[[colname for colname in df.columns if colname[0]=='u']]
+
+        episode_states = np.split(all_states,np.where(df['restarts'])[0])
+        episode_controls = np.split(all_controls,np.where(df['restarts'])[0])
+
+        x_chunks = []
+        u_chunks = []
+        for state,control in zip(episode_states,episode_controls):
+            i_start = np.random.randint(args.chunk_len)
+            chunk_x = episode_states[0].values[i_start:i_start+args.chunk_len*((len(chunk_df)-i_start)//args.chunk_len)]
+            x_chunks.append(chunk_x.reshape(-1,args.chunk_len,chunk_x.shape[-1]))
+            chunk_u = episode_controls[0].values[i_start:i_start+args.chunk_len*((len(chunk_df)-i_start)//args.chunk_len)]
+            u_chunks.append(chunk_u.reshape(-1,args.chunk_len,chunk_u.shape[-1]))
+        x_chunks = np.concatenate(x_chunks,axis=0)
+        u_chunks = np.concatenate(u_chunks,axis=0)
+        np.save(f"{envname}_cl{args.chunk_len}_xdata.npy",x_chunks)
+        np.save(f"{envname}_cl{args.chunk_len}_udata.npy",u_chunks)
+
