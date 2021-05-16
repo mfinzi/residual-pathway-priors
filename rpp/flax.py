@@ -39,11 +39,11 @@ class _Linear(nn.Module):
     cout:int
     @nn.compact
     def __call__(self,x):
-        w = self.param('w',nn.initializers.lecun_normal(),(x.shape[-1],self.cout))
+        w = self.param('w',nn.initializers.lecun_normal(),(self.cout,x.shape[-1]))
         b = self.param('b',nn.initializers.zeros,(self.cout,))
         W = (self.Pw@w.reshape(-1)).reshape(*w.shape)
         B = self.Pb@b
-        return x@W+B
+        return x@W.T+B
 
 @export
 def BiLinear(repin,repout):
@@ -152,13 +152,14 @@ class _MixedLinear(nn.Module):
     @nn.compact
     def __call__(self,x):
         basic_init = lambda *args,**kwargs: nn.initializers.lecun_normal()(*args,**kwargs)*RPP_SCALE
-        w_equiv = self.param('w_equiv',nn.initializers.lecun_normal(),(x.shape[-1],self.cout))
-        w_basic = self.param('w_basic',basic_init,(x.shape[-1],self.cout))
+        w_equiv = self.param('w_equiv',nn.initializers.lecun_normal(),(self.cout,x.shape[-1]))
+        w_basic = self.param('w_basic',basic_init,(self.cout,x.shape[-1]))
         b_equiv = self.param('b_equiv',nn.initializers.zeros,(self.cout,))
-        b_basic = self.param('b_basic',nn.initializers.zeros,(self.cout,))
+#         b_basic = self.param('b_basic',nn.initializers.zeros,(self.cout,))
+        b_basic = self.param('b_basic',basic_init,(self.cout,1))
         W = (self.Pw@w_equiv.reshape(-1)).reshape(*w_equiv.shape)
         B = self.Pb@b_equiv
-        return x@(W + w_basic) + B + b_basic
+        return x@(W + w_basic).T + B + b_basic[:, 0]
 
 def MixedEMLPBlock(rep_in,rep_out):
     """ Basic building block of EMLP consisting of G-Linear, biLinear,
