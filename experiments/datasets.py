@@ -52,23 +52,23 @@ class MujocoRegression(Dataset,metaclass=Named):
         self.X = np.load(f"{env}_cl{chunk_len}_xdata.npy") #(N,chunk_len,d_obs)
         self.U = np.load(f"{env}_cl{chunk_len}_udata.npy") #(N,chunk_len,d_action)
         # Subsample to size:
-        ids = np.random.choice(self.X.shape[0],N//chunk_len,replace=False)
+        ids = np.random.choice(self.X.shape[0], N//chunk_len, replace=False)
         self.X = self.X[ids]
         self.U = self.U[ids]
     
     def __getitem__(self,i):
-        return (self.X[i,0],self.U[i,:]), self.X[i]
+        return (self.X[i,0], self.U[i,:]), self.X[i]
     def __len__(self):
         return self.X.shape[0]
     
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Convert Mujoco ReplayBuffer into Offline dynamics dataset')
-    parser.add_argument('--path', type=str, default=os.path.expanduser("~/rpp-rl"),help='folder containing csvs')
-    parser.add_argument('--chunk_len',type=int,default=5,help="size of training trajectory chunks")
+    parser.add_argument('--path', type=str, default=os.path.expanduser("~/rpp-rl"), help='folder containing csvs')
+    parser.add_argument('--chunk_len', type=int, default=5, help="size of training trajectory chunks")
     args = parser.parse_args()
-    pths =glob.glob(args.path+"/*.csv")
+    pths = glob.glob(args.path+"/*.csv")
     print(f"Found replay buffers: {pths}")
     for pth in pths:
         envname = pth.split('_')[-1].split('.')[0]
@@ -77,12 +77,12 @@ if __name__=="__main__":
         all_states = df[[colname for colname in df.columns if colname[0]=='x']]
         all_controls = df[[colname for colname in df.columns if colname[0]=='u']]
 
-        episode_states = np.split(all_states,np.where(df['restarts'])[0])
-        episode_controls = np.split(all_controls,np.where(df['restarts'])[0])
+        episode_states = np.split(all_states, np.where(df['restarts'])[0])
+        episode_controls = np.split(all_controls, np.where(df['restarts'])[0])
 
         x_chunks = []
         u_chunks = []
-        for states,controls in zip(episode_states,episode_controls):
+        for states, controls in zip(episode_states,episode_controls):
             i_start = np.random.randint(args.chunk_len)
             chunk_x = states.values[i_start:i_start+args.chunk_len*((len(states)-i_start)//args.chunk_len)]
             x_chunks.append(chunk_x.reshape(-1,args.chunk_len,chunk_x.shape[-1]))
