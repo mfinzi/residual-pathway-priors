@@ -15,7 +15,6 @@ import argparse
 import numpy as np
 import pandas as pd
 
-
 @export
 class ModifiedInertia(Dataset,metaclass=Named):
     def __init__(self,N=1024,k=5):
@@ -45,19 +44,29 @@ class ModifiedInertia(Dataset,metaclass=Named):
     def __len__(self):
         return self.X.shape[0]
 
+timestep_table = {'Humanoid-v2':0.015,'Walker2d-v2':.008,'Ant-v2':.05,
+                    'Swimmer-v2':.04,'Hopper-v2':.008,'HalfCheetah-v2':.05}
+statedim_table = {'Humanoid-v2':45,'Walker2d-v2':16,'Ant-v2':27,
+                    'Swimmer-v2':8,'Hopper-v2':11,'HalfCheetah-v2':17}
+
 @export
 class MujocoRegression(Dataset,metaclass=Named):
-    def __init__(self,N=10000,env='Humanoid-v2',chunk_len=5):
+    def __init__(self,n_systems=10000,env='Humanoid-v2',chunk_len=5):
         super().__init__()
         self.X = np.load(f"{env}_cl{chunk_len}_xdata.npy") #(N,chunk_len,d_obs)
         self.U = np.load(f"{env}_cl{chunk_len}_udata.npy") #(N,chunk_len,d_action)
         # Subsample to size:
-        ids = np.random.choice(self.X.shape[0], N//chunk_len, replace=False)
-        self.X = self.X[ids]
+        ids = np.random.choice(self.X.shape[0], n_systems//chunk_len, replace=False)
+        self.X = self.X[ids,:,:statedim_table[env]]
+        self.X/=self.X.std((0,1))
         self.U = self.U[ids]
-    
+        self.U/=self.U.std((0,1))
+        self.xdim = self.X.shape[-1]
+        self.udim = self.U.shape[-1]
+        self.T = np.arange(chunk_len)*timestep_table[env]
+
     def __getitem__(self,i):
-        return (self.X[i,0], self.U[i,:]), self.X[i]
+        return (self.X[i,0], self.U[i,:],self.T), self.X[i]
     def __len__(self):
         return self.X.shape[0]
     
