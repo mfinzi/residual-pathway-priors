@@ -12,7 +12,7 @@ from oil.datasetup.datasets import split_dataset
 from oil.tuning.args import argupdated_config
 from rpp.objax import MixedEMLP, MixedEMLPH
 sys.path.append("../")
-from datasets import ModifiedInertia
+from datasets import Inertia
 import torch.nn as nn
 import numpy as np
 import pandas as pd
@@ -24,7 +24,7 @@ import os
 
 def main(args):
 
-    num_epochs=500
+    num_epochs=300
     ndata=1000+2000
     seed=2021
     
@@ -36,7 +36,7 @@ def main(args):
     for trial in range(10):
         
 
-        dset = ModifiedInertia(3000) # Initialize dataset with 1000 examples
+        dset = Inertia(3000) # Initialize dataset with 1000 examples
         split={'train':-1,'val':1000,'test':1000}
         datasets = split_dataset(dset,splits=split)
         dataloaders = {k:LoaderTo(DataLoader(v,batch_size=min(bs,len(v)),shuffle=(k=='train'),
@@ -88,6 +88,10 @@ def main(args):
         train_mse = np.mean([mse(jnp.array(x), jnp.array(y)) for (x, y) in trainloader])
         test_mse = np.mean([mse(jnp.array(x), jnp.array(y)) for (x, y) in testloader])
         logger.append([trial, train_mse, test_mse])
+        if args.network.lower() != 'mixedemlp':
+            fname = "mdl_inertia_basic" + str(args.basic_wd) + "_equiv" + str(args.equiv_wd) +\
+                    "_trial" + str(trial) + ".npz"
+            objax.io.save_var_collection("./saved-outputs/" + fname, model.vars())
 
     save_df = pd.DataFrame(logger)
     fname = "inertia_log_" + args.network + "_basic" + str(args.basic_wd) + "_equiv" + str(args.equiv_wd) + ".pkl"

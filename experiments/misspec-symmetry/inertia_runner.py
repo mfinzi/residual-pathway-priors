@@ -1,5 +1,6 @@
 from emlp.nn import MLP,EMLP,MLPH,EMLPH
 from emlp.groups import SO2eR3,O2eR3,DkeR3,Trivial, SO
+from rpp.groups import SL
 from emlp.reps import Scalar
 import sys
 sys.path.append("../trainer/")
@@ -12,7 +13,7 @@ from oil.datasetup.datasets import split_dataset
 from oil.tuning.args import argupdated_config
 from rpp.objax import MixedEMLP, MixedEMLPH
 sys.path.append("../")
-from datasets import ModifiedInertia
+from datasets import Inertia
 import torch.nn as nn
 import numpy as np
 import pandas as pd
@@ -24,7 +25,7 @@ import os
 
 def main(args):
 
-    num_epochs=500
+    num_epochs=300
     ndata=1000+2000
     seed=2021
     
@@ -36,7 +37,7 @@ def main(args):
     for trial in range(10):
         
 
-        dset = ModifiedInertia(3000) # Initialize dataset with 1000 examples
+        dset = Inertia(3000) # Initialize dataset with 1000 examples
         split={'train':-1,'val':1000,'test':1000}
         datasets = split_dataset(dset,splits=split)
         dataloaders = {k:LoaderTo(DataLoader(v,batch_size=min(bs,len(v)),shuffle=(k=='train'),
@@ -44,12 +45,15 @@ def main(args):
         trainloader = dataloaders['train']
         testloader = dataloaders['test']
 
-        G = dset.symmetry
+        G = SL(3)
         if args.network.lower() == "emlp":
+            print("Using EMLP")
             model = EMLP(dset.rep_in, dset.rep_out, group=G,num_layers=3,ch=384)
         elif args.network.lower() == 'mixedemlp':
+            print("Using MixedEMLP")
             model = MixedEMLP(dset.rep_in, dset.rep_out, group=G,num_layers=3,ch=384)
         else:
+            print("Using MLP")
             model = MLP(dset.rep_in, dset.rep_out, group=G,num_layers=3,ch=384)
 
         opt = objax.optimizer.Adam(model.vars())#,beta2=.99)
@@ -88,6 +92,10 @@ def main(args):
         train_mse = np.mean([mse(jnp.array(x), jnp.array(y)) for (x, y) in trainloader])
         test_mse = np.mean([mse(jnp.array(x), jnp.array(y)) for (x, y) in testloader])
         logger.append([trial, train_mse, test_mse])
+        if args.network.lower() == 'mixedemlp':
+            fname = "mdl_inertia_basic" + str(args.basic_wd) + "_equiv" + str(args.equiv_wd) +\
+                    "_trial" + str(trial) + ".npz"
+            objax.io.save_var_collection("./saved-outputs/" + fname, model.vars())
 
     save_df = pd.DataFrame(logger)
     fname = "inertia_log_" + args.network + "_basic" + str(args.basic_wd) + "_equiv" + str(args.equiv_wd) + ".pkl"

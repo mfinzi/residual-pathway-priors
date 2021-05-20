@@ -34,7 +34,7 @@ def main(args):
     bs = 500
     logger = []
     for trial in range(10):
-        dataset = WindyDoubleSpringPendulum
+        dataset = DoubleSpringPendulum
         base_ds = dataset(n_systems=ndata,chunk_len=5)
         datasets = split_dataset(base_ds,splits=split)
 
@@ -44,11 +44,10 @@ def main(args):
         testloader = dataloaders['val'] 
 
         net_config={'num_layers':3,'ch':128,'group':base_ds.symmetry}
-        
-        if args.network.lower() == "mixedmlp":
-            model = MixedEMLPH(base_ds.rep_in, Scalar, **net_config)
-        elif args.network.lower() == 'emlp':
+        if args.network.lower() == "emlp":
             model = EMLPH(base_ds.rep_in, Scalar, **net_config)
+        elif args.network.lower() == 'mixedemlp':
+            model = MixedEMLPH(base_ds.rep_in, Scalar, **net_config)
         else:
             model = MLPH(base_ds.rep_in, Scalar, **net_config)
 
@@ -70,9 +69,10 @@ def main(args):
             (z0, ts), true_zs = minibatch
             pred_zs = BHamiltonianFlow(model,z0,ts[0])
             mse = jnp.mean((pred_zs - true_zs)**2)
-            
-            basic_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if k.endswith('w_basic'))
-            equiv_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if k.endswith('w_equiv'))
+
+
+            basic_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if k.endswith('_basic'))
+            equiv_l2 = sum((v.value ** 2).sum() for k, v in model.vars().items() if not k.endswith('_basic'))
             return mse + (args.basic_wd*basic_l2) + (args.equiv_wd*equiv_l2)
 
         grad_and_val = objax.GradValues(loss, model.vars())
@@ -92,17 +92,22 @@ def main(args):
         test_loss = np.mean([mse(batch) for batch in testloader])
         tr_loss = np.mean([mse(batch) for batch in trainloader])
         logger.append([trial, tr_loss, test_loss])
-
+        if args.network.lower() != "mixedemlp":
+            fname = "log_basic" + str(args.basic_wd) + "_equiv" + str(args.equiv_wd) +\
+                    "_trial" + str(trial) + ".npz"
+            objax.io.save_var_collection("./saved-outputs/" + fname, model.vars())
+        
     save_df = pd.DataFrame(logger)
-    fname = args.network + "log_basic" + str(args.basic_wd) + "_equiv" + str(args.equiv_wd) + ".pkl"
+    fname = "log_" + args.network + "_basic" + str(args.basic_wd) +\
+            "_equiv" + str(args.equiv_wd) + ".pkl"
     save_df.to_pickle("./saved-outputs/" + fname)
     
 if __name__=="__main__":
-    parser = argparse.ArgumentParser(description="windy pendulum ablation")
+    parser = argparse.ArgumentParser(description="pendulum ablation")
     parser.add_argument( 
         "--basic_wd",
         type=float,
-        default=1e-4,
+        default=1.,
         help="basic weight decay",
     )
     parser.add_argument(
@@ -111,11 +116,11 @@ if __name__=="__main__":
         default=1e-4,
         help="basic weight decay",
     )
-    parser.add_argument(
+    parser.add_argument( 
         "--network",
         type=str,
-        default='mixedemlp',
-        help="network type: {mixedemlp, emlp, mlp}"
+        default="MixedEMLP",
+        help="type of network {EMLP, MixedEMLP, MLP}",
     )
     args = parser.parse_args()
 

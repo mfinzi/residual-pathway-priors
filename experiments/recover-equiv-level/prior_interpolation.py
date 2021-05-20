@@ -25,7 +25,7 @@ def main(args):
 
     num_epochs=1000
     ndata=5000
-    seed=2021
+    seed=808
 
 
     lr = 3e-3
@@ -35,7 +35,7 @@ def main(args):
     logger = []
 
     dataset = WindyDoubleSpringPendulum
-    base_ds = dataset(wind_scale=1e-2, n_systems=ndata,chunk_len=5)
+    base_ds = dataset(wind_scale=args.wind_scale, n_systems=ndata,chunk_len=5)
     datasets = split_dataset(base_ds,splits=split)
 
     dataloaders = {k:LoaderTo(DataLoader(v,batch_size=min(bs,len(v)),shuffle=(k=='train'),
@@ -98,10 +98,11 @@ def main(args):
     logger.append([epoch, tr_loss, test_loss])
 
     save_df = pd.DataFrame(logger)
-    fname = "log_alpha" + str(args.alpha) + "_trial" + str(args.trial) + ".pkl"
+    fname = "log_alpha" + str(args.alpha) + "_trial" + str(args.trial) + "_wind" + str(args.wind_scale) + ".pkl"
     save_df.to_pickle("./saved-outputs/" + fname)
     
-    fname = "mdl_alpha" + str(args.alpha) + "_trial" + str(args.trial) + ".npz"
+    fname = "mdl_alpha" + str(args.alpha) + "_trial" + str(args.trial) +\
+        "_wind" + str(args.wind_scale) + ".npz"
     objax.io.save_var_collection("./saved-outputs/" + fname, model.vars())
     
 if __name__=="__main__":
@@ -117,6 +118,12 @@ if __name__=="__main__":
         type=float,
         default=0.0,
         help='ratio of equiv to basic l2'
+    )
+    parser.add_argument(
+        '--wind_scale',
+        type=float,
+        default=1e-2,
+        help='wind scale'
     )
     
     parser.add_argument(
