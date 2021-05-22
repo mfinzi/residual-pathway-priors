@@ -51,6 +51,9 @@ statedim_table = {'Humanoid-v2':45,'Walker2d-v2':16,'Ant-v2':27,
                     'Swimmer-v2':8,'Hopper-v2':11,'HalfCheetah-v2':17,
                     'HopperFull-v0':12}
 
+import scipy
+import scipy.ndimage
+
 @export
 class MujocoRegression(Dataset,metaclass=Named):
     def __init__(self,N=10000,env='Humanoid-v2',chunk_len=5,seed=0):
@@ -60,9 +63,9 @@ class MujocoRegression(Dataset,metaclass=Named):
         # Subsample to size:
         with FixedNumpySeed(seed):
             ids = np.random.choice(self.X.shape[0], N//chunk_len, replace=False)
-        self.X = self.X[ids,:,:statedim_table[env]]
+        self.X = scipy.ndimage.gaussian_filter1d(self.X[ids,:,:statedim_table[env]],2,axis=1)
         #self.X/=self.X.std((0,1))
-        self.U = self.U[ids]
+        self.U = scipy.ndimage.gaussian_filter1d(self.U[ids],2,axis=1)
         #self.U/=self.U.std((0,1))
         self.xdim = self.X.shape[-1]
         self.udim = self.U.shape[-1]
@@ -83,9 +86,9 @@ class MujocoRollouts(Dataset,metaclass=Named):
         # Subsample to size:
         with FixedNumpySeed(seed):
             ids = np.random.choice(self.X.shape[0], N, replace=False)
-        self.X = self.X[ids,:,:statedim_table[env]]
+        self.X = scipy.ndimage.gaussian_filter1d(self.X[ids,:,:statedim_table[env]],2,axis=1)
         #self.X/=self.X.std((0,1))
-        self.U = self.U[ids]
+        self.U = scipy.ndimage.gaussian_filter1d(self.U[ids],2,axis=1)
         #self.U/=self.U.std((0,1))
         self.xdim = self.X.shape[-1]
         self.udim = self.U.shape[-1]
@@ -102,44 +105,46 @@ if __name__ == "__main__":
     parser.add_argument('--path', type=str, default=os.path.expanduser("~/rpp-rl"), help='folder containing csvs')
     parser.add_argument('--chunk_len', type=int, default=5, help="size of training trajectory chunks")
     parser.add_argument('--rollout_len', type=int, default=200, help="max size of test rollouts")
+    parser.add_argument('--seed', type=int, default=2021, help="random seed")
     args = parser.parse_args()
     pths = glob.glob(args.path+"/*.csv")
     print(f"Found replay buffers: {pths}")
-    for pth in pths:
-        envname = pth.split('_')[-1].split('.')[0]
-        df = pd.read_csv(pth)
+    with FixedNumpySeed(args.seed):
+        for pth in pths:
+            envname = pth.split('_')[-1].split('.')[0]
+            df = pd.read_csv(pth)
 
-        all_states = df[[colname for colname in df.columns if colname[0]=='x']]
-        all_controls = df[[colname for colname in df.columns if colname[0]=='u']]
+            all_states = df[[colname for colname in df.columns if colname[0]=='x']]
+            all_controls = df[[colname for colname in df.columns if colname[0]=='u']]
 
-        episode_states = np.split(all_states, np.where(df['restarts'])[0])
-        episode_controls = np.split(all_controls, np.where(df['restarts'])[0])
+            episode_states = np.split(all_states, np.where(df['restarts'])[0])
+            episode_controls = np.split(all_controls, np.where(df['restarts'])[0])
 
-        test_traj_x = []
-        test_traj_u = []
-        x_chunks = []
-        u_chunks = []
-        for n,(states, controls) in enumerate(zip(episode_states,episode_controls)):
-            if n%10==0: # separate out 10% for full rollouts
-                i_start = np.random.randint(100)
-                xs = states.values[i_start:i_start+args.rollout_len]
-                if len(xs)==args.rollout_len:
-                    test_traj_x.append(xs)
-                    test_traj_u.append(controls.values[i_start:i_start+args.rollout_len])
-                    continue
-            i_start = np.random.randint(args.chunk_len)
-            chunk_x = states.values[i_start:i_start+args.chunk_len*((len(states)-i_start)//args.chunk_len)]
-            x_chunks.append(chunk_x.reshape(-1,args.chunk_len,chunk_x.shape[-1]))
-            chunk_u = controls.values[i_start:i_start+args.chunk_len*((len(controls)-i_start)//args.chunk_len)]
-            u_chunks.append(chunk_u.reshape(-1,args.chunk_len,chunk_u.shape[-1]))
-        x_chunks = np.concatenate(x_chunks,axis=0)
-        u_chunks = np.concatenate(u_chunks,axis=0)
-        print(f"Found {x_chunks.shape} chunks from {len(episode_states)} episodes on {envname}")
-        #if test_traj_x:
-        np.save(f"{envname}_cl{args.chunk_len}_xdata.npy",x_chunks)
-        np.save(f"{envname}_cl{args.chunk_len}_udata.npy",u_chunks)
-        print(f"Saved {len(test_traj_x)} test episodes.")
-        np.save(f"{envname}_episodes_xdata.npy",np.stack(test_traj_x,axis=0))
-        np.save(f"{envname}_episodes_udata.npy",np.stack(test_traj_u,axis=0))
+            test_traj_x = []
+            test_traj_u = []
+            x_chunks = []
+            u_chunks = []
+            for n,(states, controls) in enumerate(zip(episode_states,episode_controls)):
+                if n%10==0: # separate out 10% for full rollouts
+                    i_start = np.random.randint(100)
+                    xs = states.values[i_start:i_start+args.rollout_len]
+                    if len(xs)==args.rollout_len:
+                        test_traj_x.append(xs)
+                        test_traj_u.append(controls.values[i_start:i_start+args.rollout_len])
+                        continue
+                i_start = np.random.randint(args.chunk_len)
+                chunk_x = states.values[i_start:i_start+args.chunk_len*((len(states)-i_start)//args.chunk_len)]
+                x_chunks.append(chunk_x.reshape(-1,args.chunk_len,chunk_x.shape[-1]))
+                chunk_u = controls.values[i_start:i_start+args.chunk_len*((len(controls)-i_start)//args.chunk_len)]
+                u_chunks.append(chunk_u.reshape(-1,args.chunk_len,chunk_u.shape[-1]))
+            x_chunks = np.concatenate(x_chunks,axis=0)
+            u_chunks = np.concatenate(u_chunks,axis=0)
+            print(f"Found {x_chunks.shape} chunks from {len(episode_states)} episodes on {envname}")
+            #if test_traj_x:
+            np.save(f"{envname}_cl{args.chunk_len}_xdata.npy",x_chunks)
+            np.save(f"{envname}_cl{args.chunk_len}_udata.npy",u_chunks)
+            print(f"Saved {len(test_traj_x)} test episodes.")
+            np.save(f"{envname}_episodes_xdata.npy",np.stack(test_traj_x,axis=0))
+            np.save(f"{envname}_episodes_udata.npy",np.stack(test_traj_u,axis=0))
 
 

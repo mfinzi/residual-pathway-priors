@@ -35,8 +35,9 @@ def rel_err(a,b):
 def log_rollout_error(roller,k,minibatch):
     (z0, u,ts), gt_zts = minibatch
     pred_zt,_ = roller(z0,u[:,:k],ts[0][:k])
-    errs = vmap(vmap(rel_err))(pred_zt,gt_zts[:,:k]) # (bs,T,)
-    clamped_errs = jax.lax.clamp(1e-7,errs,np.inf)
+    d = pred_zt.shape[-1]
+    state_errs = vmap(vmap(rel_err))(pred_zt[:,:,:d//2],gt_zts[:,:k,:d//2]) # (bs,T,)
+    clamped_errs = jax.lax.clamp(1e-7,state_errs,np.inf)
     log_geo_mean = jnp.log(clamped_errs).mean()
     return log_geo_mean
 
@@ -61,16 +62,16 @@ class RolloutTrainer(Regressor):
         # for k, v in self.model.vars().items():
         #     print(k,'NODE' in k)
         #l2 = sum((v.value ** 2).sum() for k, v in self.model.model.vars().items() if k.endswith('w'))
-        return jnp.mean((pred_x - true_x)**2)+.01*jnp.mean(reg)
+        return jnp.mean(jnp.abs(pred_x - true_x))+.05*jnp.mean(reg)
 
     def metrics(self, loader):
         #l2 = sum((v.value ** 2).sum() for k, v in self.model.vars().items() if k.endswith('w'))
         def _metrics(minibatch):
             (x0,u, ts), true_x = minibatch
             pred_x,reg = self.rollout(x0,u,ts[0])
-            mse = np.asarray(jnp.mean((pred_x - true_x)**2))
+            mse = np.asarray(jnp.mean(jnp.abs(pred_x - true_x)))
             reg = np.asarray(jnp.mean(reg))
-            return pd.Series({'MSE':mse,'reg':reg})
+            return pd.Series({'MAE':mse,'reg':reg})
         return self.evalAverageMetrics(loader,_metrics)
         #mse = lambda mb: np.asarray(self.mse(mb))
         #return {"MSE": self.evalAverageMetrics(loader, mse)}
@@ -87,16 +88,16 @@ from mujoco_models import DeltaNN
 import mujoco_models
 from datasets import MujocoRegression,MujocoRollouts
 
-def makeTrainer(*,network=DeltaNN,num_epochs=2000,ndata=50000,seed=2021,aug=False,
-                bs=500,lr=1e-3,device='cuda',split={'train':6000,'test':1000},env='HopperFull-v0',
+def makeTrainer(*,network=DeltaNN,num_epochs=500,ndata=50000,seed=2021,chunk_len=20,
+                bs=500,lr=1e-3,device='cuda',split={'train':5/6,'test':1/6},env='HopperFull-v0',
                 net_config={'num_layers':2,'ch':128},log_level='warn',
-                trainer_config={'log_dir':None,'log_args':{'minPeriod':.05,'timeFrac':.1},},#'early_stop_metric':'val_MSE'},
+                trainer_config={'log_dir':None,'log_args':{'minPeriod':.05,'timeFrac':.2},},#'early_stop_metric':'val_MSE'},
                 save=False,):
 
     logging.getLogger().setLevel(levels[log_level])
     # Prep the datasets splits, model, and dataloaders
     with FixedNumpySeed(seed),FixedPytorchSeed(seed):
-        base_ds = MujocoRegression(N=ndata,env=env)
+        base_ds = MujocoRegression(N=ndata,env=env,chunk_len=chunk_len)
         datasets = split_dataset(base_ds,splits=split)
         datasets['_test_episodes'] = MujocoRollouts(N=100,env=env)
     model = network(base_ds.xdim,base_ds.udim,**net_config)

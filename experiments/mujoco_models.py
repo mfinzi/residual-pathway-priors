@@ -68,7 +68,7 @@ class NODE(Module,metaclass=Named):
         super().__init__()
         self.net = MLP(xdim+udim,xdim,ch,num_layers)
 
-    def rollout(self,x0,u,ts,rtol=1e-2):
+    def rollout(self,x0,u,ts,rtol=1e-3):
         ut = lambda t: vmap(jnp.interp,(None,None,1))(t,ts,u)
         def aug_dynamics(z,t):
             F = .3*self.net(jnp.concatenate([z[...,:-1],ut(t)],-1))
@@ -76,7 +76,7 @@ class NODE(Module,metaclass=Named):
             return jnp.concatenate([F,F_norm[...,None]],-1)
         #dynamics = lambda x,t: .3*self.net(jnp.concatenate([x,ut(t)],-1))
         z0 = jnp.concatenate([x0,0*x0[...,:1]])
-        zt = odeint(aug_dynamics,z0,ts,rtol=rtol,atol=1e-2)
+        zt = odeint(aug_dynamics,z0,ts,rtol=rtol,atol=1e-3)
         xt = zt[...,:-1]
         kinetic = zt[...,-1]
         return xt,kinetic
@@ -86,11 +86,68 @@ class SumRollout(Module,metaclass=Named):
         super().__init__()
         self.node=node
         self.deltann=deltann
-    def rollout(self,x0,u,ts,rtol=1e-2):
+    def rollout(self,x0,u,ts,rtol=1e-3):
         xt_node,kinetic = self.node.rollout(x0,u,ts,rtol)
         xt_nn,norm = self.deltann.rollout(x0,u,ts)
-        return xt_node+.1*xt_nn,.1*norm+kinetic
+        return xt_node/2+xt_nn/2,5*norm+kinetic
 
 @export        
 def RPPdeltaNode(xdim,udim,ch=384,num_layers=3):
     return SumRollout(NODE(xdim,udim,ch,num_layers),DeltaNN(xdim,udim,ch,num_layers))
+
+from trainer.hamiltonian_dynamics import hamiltonian_dynamics
+from functools import partial
+
+ 
+# class HMLP(MLP):
+#     def H(self,x):
+#         return self.net(x).sum()
+@export
+class HNN(Module,metaclass=Named):
+    def __init__(self,xdim,udim,ch=384,num_layers=3):
+        super().__init__()
+        qdim = xdim//2
+        self.V = MLP(qdim,1,ch,num_layers)
+        self.L = MLP(qdim,qdim**2,ch,num_layers)
+        self.qdim=qdim
+    def tril_Minv(self, q):
+        L_q = self.L(q).reshape(self.qdim,self.qdim)
+        res = jnp.tril(L_q)
+        res = jnp.diag(jax.nn.softplus(jnp.diag(res)))-jnp.diag(jnp.diag(res))+res
+        return res
+
+    def Minv(self, q, eps=1e-4):
+        """Compute the learned inverse mass matrix M^{-1}(q)
+        Args:
+            q: bs x D Tensor representing the position
+        """
+        L = self.tril_Minv(q)
+        diag_reg = eps*jnp.eye(lower_triangular.shape[-1])
+        return L@L.T+diag_reg
+    
+    def M(self,q,eps=1e-4):
+        return jnp.linalg.inv(self.Minv(q))
+
+
+    def H(self,z):
+        q = z[:self.qdim]
+        p = z[self.qdim:]
+        energy = ((self.Minv(q)@p)*p).sum()/2+self.V(q)
+        return energy
+
+    def rollout(self,x0,u,ts,rtol=1e-3):
+        q0 = x0[...,:self.qdim]
+        v0 = x0[...,self.qdim:]
+        p0 = self.M(q0)@self.v0
+
+        # def aug_dynamics(z,t):
+        #     V = self.
+        #     F_norm = (F**2).mean(-1)
+        #     return jnp.concatenate([F,F_norm[...,None]],-1)
+        #dynamics = lambda x,t: .3*self.net(jnp.concatenate([x,ut(t)],-1))
+        z0 = jnp.concatenate([q0,p0])
+        zt = odeint(partial(hamiltonian_dynamics,self.H),z0,ts,rtol=rtol,atol=1e-3)
+        qt = zt[...,:self.qdim]
+        pt = zt[...,self.qdim:]
+        vt = vmap(self.Minv)(qt)@pt
+        return jnp.concatenate([qt,vt],-1),0
