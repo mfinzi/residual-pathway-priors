@@ -107,8 +107,10 @@ class HNN(Module,metaclass=Named):
     def __init__(self,xdim,udim,ch=384,num_layers=3):
         super().__init__()
         qdim = xdim//2
-        self.V = MLP(qdim,1,ch,num_layers)
-        self.L = MLP(qdim,qdim**2,ch,num_layers)
+        V = MLP(qdim,1,ch,num_layers)
+        self.V = V
+        L = MLP(qdim,qdim**2,ch,num_layers)
+        self.L = L
         self.qdim=qdim
     def tril_Minv(self, q):
         L_q = self.L(q).reshape(self.qdim,self.qdim)
@@ -116,7 +118,7 @@ class HNN(Module,metaclass=Named):
         res = jnp.diag(jax.nn.softplus(1+jnp.diag(res)))-jnp.diag(jnp.diag(res))+res
         return res
 
-    def Minv(self, q, eps=1e-3):
+    def Minv(self, q, eps=1e-2):
         """Compute the learned inverse mass matrix M^{-1}(q)
         Args:
             q: bs x D Tensor representing the position
@@ -125,9 +127,9 @@ class HNN(Module,metaclass=Named):
         diag_reg = eps*jnp.eye(self.qdim)
         return L@L.T+diag_reg
     
-    def M(self,q,v,eps=1e-3):
-        return jnp.linalg.solve(self.Minv(q,eps=eps),v)
-        #return jnp.linalg.inv(self.Minv(q,eps=eps))@v
+    def M(self,q,v,eps=1e-2):
+        #return jnp.linalg.solve(self.Minv(q,eps=eps),v)
+        return jnp.linalg.inv(self.Minv(q,eps=eps))@v
 
     def H(self,z):
         q = z[...,:self.qdim]
@@ -139,15 +141,27 @@ class HNN(Module,metaclass=Named):
         q0 = x0[:self.qdim]
         v0 = x0[self.qdim:]
         p0 = self.M(q0,v0)
-
-        # def aug_dynamics(z,t):
-        #     V = self.
-        #     F_norm = (F**2).mean(-1)
-        #     return jnp.concatenate([F,F_norm[...,None]],-1)
-        #dynamics = lambda x,t: .3*self.net(jnp.concatenate([x,ut(t)],-1))
         z0 = jnp.concatenate([q0,p0],axis=-1)
         zt = odeint(partial(hamiltonian_dynamics,self.H),z0,ts,rtol=rtol,atol=1e-3)
         qt = zt[...,:self.qdim]
         pt = zt[...,self.qdim:]
         vt = jnp.squeeze((vmap(self.Minv)(qt)@pt[...,None]),-1)
         return jnp.concatenate([qt,vt],-1),0
+
+
+class SumRollout(Module,metaclass=Named):
+    def __init__(self,node,deltann):
+        super().__init__()
+        self.node=node
+        self.deltann=deltann
+    def rollout(self,x0,u,ts,rtol=1e-3):
+        xt_node,kinetic = self.node.rollout(x0,u,ts,rtol)
+        xt_nn,norm = self.deltann.rollout(x0,u,ts)
+        return xt_node/2+xt_nn/2,2*norm+kinetic
+
+@export        
+def RPPall(xdim,udim,ch=384,num_layers=3):
+    hnn = HNN(xdim,udim,ch,num_layers)
+    node = NODE(xdim,udim,ch,num_layers)
+    deltann = DeltaNN(xdim,udim,ch,num_layers)
+    return SumRollout(SumRollout(hnn,node),deltann)
