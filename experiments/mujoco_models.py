@@ -113,41 +113,41 @@ class HNN(Module,metaclass=Named):
     def tril_Minv(self, q):
         L_q = self.L(q).reshape(self.qdim,self.qdim)
         res = jnp.tril(L_q)
-        res = jnp.diag(jax.nn.softplus(jnp.diag(res)))-jnp.diag(jnp.diag(res))+res
+        res = jnp.diag(jax.nn.softplus(1+jnp.diag(res)))-jnp.diag(jnp.diag(res))+res
         return res
 
-    def Minv(self, q, eps=1e-4):
+    def Minv(self, q, eps=1e-3):
         """Compute the learned inverse mass matrix M^{-1}(q)
         Args:
             q: bs x D Tensor representing the position
         """
         L = self.tril_Minv(q)
-        diag_reg = eps*jnp.eye(lower_triangular.shape[-1])
+        diag_reg = eps*jnp.eye(self.qdim)
         return L@L.T+diag_reg
     
-    def M(self,q,eps=1e-4):
-        return jnp.linalg.inv(self.Minv(q))
-
+    def M(self,q,v,eps=1e-3):
+        return jnp.linalg.solve(self.Minv(q,eps=eps),v)
+        #return jnp.linalg.inv(self.Minv(q,eps=eps))@v
 
     def H(self,z):
-        q = z[:self.qdim]
-        p = z[self.qdim:]
-        energy = ((self.Minv(q)@p)*p).sum()/2+self.V(q)
+        q = z[...,:self.qdim]
+        p = z[...,self.qdim:]
+        energy = ((self.Minv(q)@p)*p).sum()/2+self.V(q).sum()
         return energy
 
     def rollout(self,x0,u,ts,rtol=1e-3):
-        q0 = x0[...,:self.qdim]
-        v0 = x0[...,self.qdim:]
-        p0 = self.M(q0)@self.v0
+        q0 = x0[:self.qdim]
+        v0 = x0[self.qdim:]
+        p0 = self.M(q0,v0)
 
         # def aug_dynamics(z,t):
         #     V = self.
         #     F_norm = (F**2).mean(-1)
         #     return jnp.concatenate([F,F_norm[...,None]],-1)
         #dynamics = lambda x,t: .3*self.net(jnp.concatenate([x,ut(t)],-1))
-        z0 = jnp.concatenate([q0,p0])
+        z0 = jnp.concatenate([q0,p0],axis=-1)
         zt = odeint(partial(hamiltonian_dynamics,self.H),z0,ts,rtol=rtol,atol=1e-3)
         qt = zt[...,:self.qdim]
         pt = zt[...,self.qdim:]
-        vt = vmap(self.Minv)(qt)@pt
+        vt = jnp.squeeze((vmap(self.Minv)(qt)@pt[...,None]),-1)
         return jnp.concatenate([qt,vt],-1),0
