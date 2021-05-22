@@ -54,12 +54,13 @@ class DeltaNN(Module,metaclass=Named):
     
     def rollout(self,x0,u,ts):
         xs = [x0]
+        norm = 0
         for i in range(len(ts)-1):
             #print(xs[-1].shape,u.shape)
             delta = self.net(jnp.concatenate([xs[-1],u[i]],-1))
-            #print(delta.shape,xs[-1].shape)
+            norm += jnp.mean(delta**2,-1)
             xs.append(delta+xs[-1])
-        return jnp.stack(xs,0)
+        return jnp.stack(xs,0),norm
 
 @export
 class NODE(Module,metaclass=Named):
@@ -69,8 +70,16 @@ class NODE(Module,metaclass=Named):
 
     def rollout(self,x0,u,ts,rtol=1e-2):
         ut = lambda t: vmap(jnp.interp,(None,None,1))(t,ts,u)
-        dynamics = lambda x,t: .3*self.net(jnp.concatenate([x,ut(t)],-1))
-        return odeint(dynamics,x0,ts,rtol=rtol,atol=1e-2)
+        def aug_dynamics(z,t):
+            F = .3*self.net(jnp.concatenate([z[...,:-1],ut(t)],-1))
+            F_norm = (F**2).mean(-1)
+            return jnp.concatenate([F,F_norm[...,None]],-1)
+        #dynamics = lambda x,t: .3*self.net(jnp.concatenate([x,ut(t)],-1))
+        z0 = jnp.concatenate([x0,0*x0[...,:1]])
+        zt = odeint(aug_dynamics,z0,ts,rtol=rtol,atol=1e-2)
+        xt = zt[...,:-1]
+        kinetic = zt[...,-1]
+        return xt,kinetic
 
 class SumRollout(Module,metaclass=Named):
     def __init__(self,node,deltann):
@@ -78,7 +87,9 @@ class SumRollout(Module,metaclass=Named):
         self.node=node
         self.deltann=deltann
     def rollout(self,x0,u,ts,rtol=1e-2):
-        return self.node.rollout(x0,u,ts,rtol)/np.sqrt(2)+self.deltann.rollout(x0,u,ts)/np.sqrt(2)
+        xt_node,kinetic = self.node.rollout(x0,u,ts,rtol)
+        xt_nn,norm = self.deltann.rollout(x0,u,ts)
+        return xt_node+.1*xt_nn,.1*norm+kinetic
 
 @export        
 def RPPdeltaNode(xdim,udim,ch=384,num_layers=3):
