@@ -81,7 +81,7 @@ class NODE(Module,metaclass=Named):
         kinetic = zt[...,-1]
         return xt,kinetic
 
-class SumRollout(Module,metaclass=Named):
+class SumRollout(Module):
     def __init__(self,node,deltann):
         super().__init__()
         self.node=node
@@ -148,20 +148,26 @@ class HNN(Module,metaclass=Named):
         vt = jnp.squeeze((vmap(self.Minv)(qt)@pt[...,None]),-1)
         return jnp.concatenate([qt,vt],-1),0
 
-
-class SumRollout(Module,metaclass=Named):
-    def __init__(self,node,deltann):
+@export
+class SumRolloutAll(Module):
+    def __init__(self,hnn,node,deltann,r2,r3):
         super().__init__()
+        self.hnn = hnn
         self.node=node
         self.deltann=deltann
+        self.r2=r2
+        self.r3=r3
     def rollout(self,x0,u,ts,rtol=1e-3):
-        xt_node,kinetic = self.node.rollout(x0,u,ts,rtol)
-        xt_nn,norm = self.deltann.rollout(x0,u,ts)
-        return xt_node/2+xt_nn/2,2*norm+kinetic
+        xt_hnn,_ = self.hnn.rollout(x0,u,ts,rtol)
+        xt_node,node_kinetic = self.node.rollout(x0,u,ts,rtol)
+        xt_nn,nn_norm = self.deltann.rollout(x0,u,ts)
+        xout = xt_hnn/3+xt_node/3+xt_nn/3
+        regularizer = self.r2*node_kinetic + self.r3*nn_norm
+        return xout,regularizer
 
 @export        
-def RPPall(xdim,udim,ch=384,num_layers=3):
+def RPPall(xdim,udim,ch=384,num_layers=3,r2=2,r3=4):
     hnn = HNN(xdim,udim,ch,num_layers)
     node = NODE(xdim,udim,ch,num_layers)
     deltann = DeltaNN(xdim,udim,ch,num_layers)
-    return SumRollout(SumRollout(hnn,node),deltann)
+    return SumRolloutAll(hnn,node,deltann,r2,r3)

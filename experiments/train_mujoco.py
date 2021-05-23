@@ -90,7 +90,7 @@ from datasets import MujocoRegression,MujocoRollouts
 
 def makeTrainer(*,network=DeltaNN,num_epochs=500,ndata=50000,seed=2021,chunk_len=20,
                 bs=500,lr=1e-3,device='cuda',split={'train':5/6,'test':1/6},env='HopperFull-v0',
-                net_config={'num_layers':2,'ch':128},log_level='warn',
+                net_config={'num_layers':2,'ch':128,'r2':2,'r3':4},log_level='warn',
                 trainer_config={'log_dir':None,'log_args':{'minPeriod':.05,'timeFrac':.2},},#'early_stop_metric':'val_MSE'},
                 save=False,):
 
@@ -100,6 +100,9 @@ def makeTrainer(*,network=DeltaNN,num_epochs=500,ndata=50000,seed=2021,chunk_len
         base_ds = MujocoRegression(N=ndata,env=env,chunk_len=chunk_len)
         datasets = split_dataset(base_ds,splits=split)
         datasets['_test_episodes'] = MujocoRollouts(N=100,env=env)
+    if network != mujoco_models.RPPall:
+        net_config.pop('r2')
+        net_config.pop('r3')
     model = network(base_ds.xdim,base_ds.udim,**net_config)
     dataloaders = {k:LoaderTo(DataLoader(v,batch_size=min(bs,len(v)),shuffle=(k=='train'),
                 num_workers=0,pin_memory=False)) for k,v in datasets.items()}
