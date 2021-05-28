@@ -89,8 +89,8 @@ def main(args):
 
         logger.append([epoch, tr_loss, test_loss])
         
-    test_loss = np.mean([mse(batch) for batch in testloader])
-    tr_loss = np.mean([mse(batch) for batch in trainloader])
+    test_loss = np.mean([mse(jnp.array(x), jnp.array(y)) for (x,y) in testloader])
+    tr_loss = np.mean([mse(jnp.array(x), jnp.array(y)) for (x,y) in trainloader])
     logger.append([epoch, tr_loss, test_loss])
 
     save_df = pd.DataFrame(logger)
