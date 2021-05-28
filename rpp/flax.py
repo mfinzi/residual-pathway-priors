@@ -23,7 +23,7 @@ RPP_SCALE=1e-3
 
 
 @export
-def Linear(repin,repout):
+def Linear(repin,repout,init_scale=1.0):
     """ Basic equivariant Linear layer from repin to repout."""
     cin =repin.size()
     cout = repout.size()
@@ -31,15 +31,17 @@ def Linear(repin,repout):
     Pw = rep_W.equivariant_projector()
     Pb = repout.equivariant_projector()
     logging.info(f"Linear W components:{rep_W.size()} rep:{rep_W}")
-    return _Linear(Pw,Pb,cout)
+    return _Linear(Pw,Pb,cout,init_scale)
 
 class _Linear(nn.Module):
     Pw:LinearOperator
     Pb:LinearOperator
     cout:int
+    init_scale:float
     @nn.compact
     def __call__(self,x):
-        w = self.param('w',nn.initializers.lecun_normal(),(self.cout,x.shape[-1]))
+        scaled_init = lambda *args,**kwargs: nn.initializers.lecun_normal()(*args,**kwargs)*self.init_scale
+        w = self.param('w',init_scale,(self.cout,x.shape[-1]))
         b = self.param('b',nn.initializers.zeros,(self.cout,))
         W = (self.Pw@w.reshape(-1)).reshape(*w.shape)
         B = self.Pb@b
@@ -135,7 +137,7 @@ def EMLP(rep_in,rep_out,group,ch=384,num_layers=3):
 
 
 @export
-def MixedLinear(repin,repout):
+def MixedLinear(repin,repout,init_scale=1.):
     """ Basic equivariant Linear layer from repin to repout."""
     cin =repin.size()
     cout = repout.size()
@@ -143,23 +145,25 @@ def MixedLinear(repin,repout):
     Pw = rep_W.equivariant_projector()
     Pb = repout.equivariant_projector()
     logging.info(f"Linear W components:{rep_W.size()} rep:{rep_W}")
-    return _MixedLinear(Pw,Pb,cout)
+    return _MixedLinear(Pw,Pb,cout,init_scale)
 
 class _MixedLinear(nn.Module):
     Pw:LinearOperator
     Pb:LinearOperator
     cout:int
+    init_scale:float
     @nn.compact
     def __call__(self,x):
-        basic_init = lambda *args,**kwargs: nn.initializers.lecun_normal()(*args,**kwargs)*RPP_SCALE
-        w_equiv = self.param('w_equiv',nn.initializers.lecun_normal(),(x.shape[-1],self.cout))
-        w_basic = self.param('w_basic',basic_init,(x.shape[-1],self.cout))
+        basic_init = lambda *args,**kwargs: nn.initializers.lecun_normal()(*args,**kwargs)*RPP_SCALE*self.init_scale
+        equiv_init = lambda *args,**kwargs: nn.initializers.lecun_normal()(*args,**kwargs)*self.init_scale
+        w_equiv = self.param('w_equiv',equiv_init,(self.cout,x.shape[-1]))
+        w_basic = self.param('w_basic',basic_init,(self.cout,x.shape[-1]))
         b_equiv = self.param('b_equiv',nn.initializers.zeros,(self.cout,))
 #         b_basic = self.param('b_basic',nn.initializers.zeros,(self.cout,))
         b_basic = self.param('b_basic',basic_init,(self.cout,1))
         W = (self.Pw@w_equiv.reshape(-1)).reshape(*w_equiv.shape)
         B = self.Pb@b_equiv
-        return x@(W + w_basic) + B + b_basic[:, 0]
+        return x@(W + w_basic).T + B + b_basic[:, 0]
 
 def MixedEMLPBlock(rep_in,rep_out):
     """ Basic building block of EMLP consisting of G-Linear, biLinear,
