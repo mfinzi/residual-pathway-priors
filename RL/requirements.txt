@@ -1,0 +1,12 @@
+absl-py==0.12.0
+gdown
+gym
+tqdm
+flax
+ml-collections
+optax
+tensorboardX
+distrax
+imageio
+imageio-ffmpeg
+git+https://github.com/rail-berkeley/d4rl@master#egg=d4rl
