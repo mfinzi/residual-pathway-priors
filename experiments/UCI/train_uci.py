@@ -32,7 +32,7 @@ def main(args):
         print("Using MLP")
         model = LinearNet(num_layers, ch, **kwargs).cuda()
 
-    tr_x, tr_y, te_x, te_y = uci_loader(args.dataset)
+    tr_x, tr_y, te_x, te_y = uci_loader(args.dataset, path=args.data_path)
     n_train = tr_x.shape[0]
     n_test = te_x.shape[0]
     
@@ -118,6 +118,14 @@ if __name__=="__main__":
         default=100,
         help="",
     )
+    
+    parser.add_argument(
+         "--data_path",
+        type=str,
+        default="/datasets/uci/",
+        help="path to data",
+    )   
+    
     parser.add_argument( 
         "--trial",
         type=int,
