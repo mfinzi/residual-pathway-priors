@@ -149,7 +149,7 @@ if __name__=="__main__":
     parser.add_argument( 
         "--basic_wd",
         type=float,
-        default=0.1,
+        default=1.,
         help="basic weight decay",
     )
     parser.add_argument(

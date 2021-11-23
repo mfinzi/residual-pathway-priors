@@ -19,7 +19,7 @@ def compute_mse(model, loader):
     return mse.div(n_data).item()
 
 def main(args):
-    num_layers=3
+    num_layers=4
     ch=32
     kwargs = uci_reps[args.dataset]
     if args.network.lower() == 'rpp':
@@ -32,7 +32,7 @@ def main(args):
         print("Using MLP")
         model = LinearNet(num_layers, ch, **kwargs).cuda()
 
-    tr_x, tr_y, te_x, te_y = uci_loader(args.dataset)
+    tr_x, tr_y, te_x, te_y = uci_loader(args.dataset, path=args.data_path)
     n_train = tr_x.shape[0]
     n_test = te_x.shape[0]
     
@@ -44,6 +44,7 @@ def main(args):
     
     
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
     loss_func = torch.nn.MSELoss()
     if args.reg_fun.lower() == 'l1':
         reg_fun = RPPConv_L1
@@ -62,6 +63,7 @@ def main(args):
                       basic_wd=args.basic_wd)
             loss.backward()
             optimizer.step()        
+            scheduler.step()
 
         if (epoch % args.save_every == 0) or (epoch == args.epochs-1):
             with torch.no_grad():
@@ -70,10 +72,9 @@ def main(args):
             
             logger.append([epoch, tr_mse, te_mse])
             
-
     ## Save Outputs ##
     fpath = "./saved-outputs/" + args.dataset + "/"
-    fname =  args.network + "_conv_wd" + str(args.conv_wd) + "_basic_wd" + str(args.basic_wd)
+    fname =  args.network + str(args.trial) + "_conv_wd" + str(args.conv_wd) + "_basic_wd" + str(args.basic_wd)
     if not os.path.exists(fpath):
         os.makedirs(fpath)
     df = pd.DataFrame(logger)
@@ -116,6 +117,20 @@ if __name__=="__main__":
         type=int,
         default=100,
         help="",
+    )
+    
+    parser.add_argument(
+         "--data_path",
+        type=str,
+        default="/datasets/uci/",
+        help="path to data",
+    )   
+    
+    parser.add_argument( 
+        "--trial",
+        type=int,
+        default=0,
+        help="just a flag for saving",
     )
     parser.add_argument( 
         "--basic_wd",
