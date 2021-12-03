@@ -25,10 +25,10 @@ pip install -e .
 
 If you find our work helpful, cite it with
 ```bibtex
-@article{finzi2021residual,
+@inproceedings{finzi2021residual,
   title={Residual Pathway Priors for Soft Equivariance Constraints},
   author={Finzi, Marc and Benton, Gregory and Wilson, Andrew G},
-  journal={Advances in Neural Information Processing Systems},
+  booktitle={Advances in Neural Information Processing Systems},
   volume={34},
   year={2021}
 }
